@@ -1,12 +1,12 @@
 #include <Arduino.h>
-#define motorA1 25
-#define motorA2 26
+#define motorA1 26
+#define motorA2 25
 #define motorB1 27
 #define motorB2 14
-#define motorC1 5
-#define motorC2 18
-#define motorD1 16
-#define motorD2 17
+#define motorC1 17
+#define motorC2 16
+#define motorD1 18
+#define motorD2 5
 #define trigPin 33
 #define echoPin 32
 
