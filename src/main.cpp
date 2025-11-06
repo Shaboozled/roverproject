@@ -1,14 +1,14 @@
 #include <Arduino.h>
-#define motorA1 17
-#define motorA2 18
-#define motorB1 15
-#define motorB2 16
-#define motorC1 21
+#define motorA1 8
+#define motorA2 7
+#define motorB1 9
+#define motorB2 10
+#define motorC1 23
 #define motorC2 22
-#define motorD1 4
-#define motorD2 5
-#define trigPin 25
-#define echoPin 26
+#define motorD1 26
+#define motorD2 25
+#define trigPin 33
+#define echoPin 32
 
 
 struct Hbro 
