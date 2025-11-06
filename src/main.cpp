@@ -1,12 +1,12 @@
 #include <Arduino.h>
-#define motorA1 8
-#define motorA2 7
-#define motorB1 9
-#define motorB2 10
-#define motorC1 23
-#define motorC2 22
-#define motorD1 26
-#define motorD2 25
+#define motorA1 25
+#define motorA2 26
+#define motorB1 27
+#define motorB2 14
+#define motorC1 5
+#define motorC2 18
+#define motorD1 16
+#define motorD2 17
 #define trigPin 33
 #define echoPin 32
 
@@ -14,7 +14,8 @@
 struct Hbro 
 {    
     // Pin setup for motors
-
+    // Noter til motorer er outdated, opdatér gerne hvis det lyster
+    
     void setupPins() 
     {
         pinMode(motorA1, OUTPUT);
@@ -151,12 +152,17 @@ void setup()
 
 void loop()
 {
-    int stringout = frontSensor.distance();  // get distance reading
+   int stringout = frontSensor.distance();  // get distance reading
 
     Serial.print("Distance: ");
     Serial.print(stringout);
     Serial.println(" cm");
-  
+    
+
+        forhjul.fremad();
+        baghjul.fremad();
+
+    
   if (frontSensor.cm > 0 && frontSensor.cm < 20) // defining thresholds for wheel reversal
   {
     Serial.println("Too close! Reversing...");
@@ -178,4 +184,5 @@ void loop()
     }
 
   delay(500);
+  
 }
