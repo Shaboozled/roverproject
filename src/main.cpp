@@ -157,10 +157,6 @@ void loop()
     Serial.print("Distance: ");
     Serial.print(stringout);
     Serial.println(" cm");
-    
-
-        forhjul.fremad();
-        baghjul.fremad();
 
     
   if (frontSensor.cm > 0 && frontSensor.cm < 20) // defining thresholds for wheel reversal
