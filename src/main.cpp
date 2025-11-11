@@ -1,3 +1,6 @@
+#include "esp32-hal-gpio.h"
+#include "esp32-hal.h"
+#include "freertos/FreeRTOS.h"
 #include <Arduino.h>
 #define motorA1 25
 #define motorA2 26
@@ -143,46 +146,87 @@ Hbro forhjul;
 Hbro2 baghjul;
 Ultralydssensor frontSensor;
 
+TaskHandle_t UltraTaskHandle = NULL;
+TaskHandle_t DriveTaskHandle = NULL;
+
+QueueSetHandle_t Distances = NULL;
+
+void UltraTask(void *parameter)
+{
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  
+  for (;;)
+  {
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+
+    // Read echo
+    long duration = pulseInLong(echoPin, HIGH);
+    long distance = (duration/2.0) / 29.1;
+    
+    // Send to queue
+    xQueueSend(Distances, &distance, portMAX_DELAY);
+    Serial.print("Distance: ");
+    Serial.print(distance);
+    Serial.println(" cm");
+
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+  }
+}
+
+void DriveTask(void *parameter)
+{
+    long distance = 0;
+    for (;;)
+    {
+        if (xQueueReceive(Distances, &distance, portMAX_DELAY) == pdTRUE)
+
+        if (distance > 25)
+        {
+            Serial.println("No obstacles, moving forward");
+            forhjul.fremad();
+            baghjul.fremad();
+        }
+        else if (distance > 0 && distance <= 25)
+        {
+            Serial.println("Too close, reversing!");
+            forhjul.bagud();
+            baghjul.bagud();
+            vTaskDelay(400 / portTICK_PERIOD_MS);
+            forhjul.stopmotor();
+            baghjul.stopmotor();
+        }
+        else
+        {
+            forhjul.stopmotor();
+            baghjul.stopmotor();
+        }
+    }
+}
+
 void setup() 
 {
-  forhjul.setupPins();
-  baghjul.setupPins();
-  frontSensor.setupULS();
+    Serial.begin(115200);
+    delay(1000);
+    Serial.println("Starting FreeRTOS Rover");
+
+    forhjul.setupPins();   
+    baghjul.setupPins();
+    frontSensor.setupULS();
+
+    // Create queue for distances
+    Distances = xQueueCreate(10, sizeof(long));
+
+    // Create tasks
+    xTaskCreatePinnedToCore(UltraTask, "UltraTask", 4096, NULL, 1, &UltraTaskHandle, 0);
+    xTaskCreatePinnedToCore(DriveTask, "DriveTask", 4096, NULL, 1, &DriveTaskHandle, 1);
 }
 
 void loop()
 {
-   int stringout = frontSensor.distance();  // get distance reading
-
-    Serial.print("Distance: ");
-    Serial.print(stringout);
-    Serial.println(" cm");
-    
-
-        forhjul.fremad();
-        baghjul.fremad();
-
-    
-  if (frontSensor.cm > 0 && frontSensor.cm < 20) // defining thresholds for wheel reversal
-  {
-    Serial.println("Too close! Reversing...");
-    forhjul.stopmotor();
-    baghjul.stopmotor();
-    delay (250);
-    forhjul.bagud();
-    baghjul.bagud();
-    delay (1000);
-    forhjul.stopmotor();
-    baghjul.stopmotor();
-    delay (250);
-  } 
-    else // if not within threshold move forward
-    {
-        Serial.println("Moving forward...");
-        forhjul.fremad();
-        baghjul.fremad();
-    }
-
-  delay(500);
   
 }
