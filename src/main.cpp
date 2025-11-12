@@ -2,6 +2,9 @@
 #include "esp32-hal.h"
 #include "freertos/FreeRTOS.h"
 #include <Arduino.h>
+#include <Wire.h>
+#include <U8g2lib.h>
+
 #define motorA1 25
 #define motorA2 26
 #define motorB1 27
@@ -12,6 +15,9 @@
 #define motorD2 17
 #define trigPin 33
 #define echoPin 32
+#define batteryLevelPin 36
+#define SDAPin 21
+#define SCKPin 22
 
 
 struct Hbro 
@@ -139,6 +145,38 @@ struct Ultralydssensor
 
         return cm;
 
+    }
+};
+
+struct OLED
+{
+    void setup()
+    {
+        U8G2_SH1106_128X32_VISIONOX_F_HW_I2C Display1(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+
+        Display1.begin();
+    }
+    void OLEDWrite()
+    {
+        Display1.clearBuffer();         // clear the internal memory
+        Display1.setFont(u8g2_font_t0_11_tf); // choose a suitable font
+        Display1.drawStr(0,10,"Ardustore.dk!"); // write something to the internal memory
+        Display1.sendBuffer();          // transfer internal memory to the display
+        delay(1000);
+    }
+};
+
+struct Battery{
+    void pinSetup()
+    {
+        pinMode(batteryLevelPin, INPUT);
+    }
+    float readBatteryLevel()
+    {
+        int analogInput = analogRead(batteryLevelPin);
+        float rawVolts = analogInput * 3.3/4096;
+
+        return rawVolts;
     }
 };
 
