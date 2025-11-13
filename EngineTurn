@@ -1,14 +1,25 @@
-TaskHandle_t TurnTask = NULL;
-
-void TurnMovement (void*parameter)
+void Movement(void*parameter)
 {
-while (true)
-{
- // Når ToF er opsat skal dens variable laves her
-  int leftDistance = "INDSÆT ToF VARIABLE HER(VENSTRE)"();
-  int rightDistance = "INDSÆT ToF VARIABLE HER(HØJRE)"();
-
-  if (leftDistance < 50 && rightDistance > 100)
+    while (true)
+    {
+        /* code */
+    
+    
+    long distance;
+    int leftDistance = "Indsæt variable her (venstre)"();
+    int rightDistance = "Indsæt variable her(Højre)"();
+    xQueueReceive(Distances, &distance, portMAX_DELAY);
+    if (distance < 25)
+    {
+        forhjul.bagud();
+        baghjul.bagud();
+    }
+    else if (distance > 25)
+    {
+        forhjul.fremad();
+        baghjul.fremad();
+    }
+    else if (leftDistance < 50 && rightDistance > 100)
     {
       forhjul.hojre();
       baghjul.hojre();
@@ -18,13 +29,12 @@ while (true)
       forhjul.venstre();
       baghjul.venstre();
     }
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+    
+    else 
+    forhjul.stopmotor ();
+    baghjul.stopmotor();
+    
     }
 
 
-    }  
-// Der er ikke lavet en else til at køre fremad, da jeg tænker dette sker i den anden task der er lavet til fremad/bagud
-
-// Og inde i void setup
-
- xTaskCreatePinnedToCore(TurnMovement, "TurnMovement", 4096, NULL, 1, &TurnTask, 0);
+}
