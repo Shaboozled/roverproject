@@ -6,8 +6,8 @@ void Movement(void*parameter)
     
     
     long distance;
-    int leftDistance = "Indsæt variable her (venstre)"();
-    int rightDistance = "Indsæt variable her(Højre)"();
+
+    // Indsæt 1 eller 2 xQueue fra ToF 
     xQueueReceive(Distances, &distance, portMAX_DELAY);
     if (distance < 25)
     {
