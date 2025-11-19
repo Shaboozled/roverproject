@@ -1,0 +1,352 @@
+#include "esp32-hal-gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/portmacro.h"
+#include <Arduino.h>
+#include <cstddef>
+#include "Adafruit_VL53L0X.h"
+#include <Wire.h>
+// Her sætter vi pins til H-broernes (A1 A2) til alle 4 motorer
+#define motorA1 26
+#define motorA2 25
+#define motorB1 27
+#define motorB2 14
+#define motorC1 17
+#define motorC2 16
+#define motorD1 18
+#define motorD2 5
+// Ultralydssensor pins
+#define trigPin 33
+#define echoPin 32
+//XSHUT pins (Indtil videre)
+#define XSHUT1 26 // Blev sat til 2. sensor 
+#define XSHUT2 27
+
+Adafruit_VL53L0X ToF1 = Adafruit_VL53L0X();
+Adafruit_VL53L0X ToF2 = Adafruit_VL53L0X();
+
+TaskHandle_t ToFTask1 = NULL;
+TaskHandle_t ToFTask2 = NULL;
+TaskHandle_t MovementTask = NULL;
+TaskHandle_t Ultra = NULL;
+
+QueueSetHandle_t UltDistances = NULL;
+QueueSetHandle_t ToFQueue1 = NULL;
+QueueSetHandle_t ToFQueue2 = NULL;
+
+volatile float currentDistanceULS = 0.0;
+volatile float currentDistanceToF1 = 0.0;
+volatile float currentDistanceToF2 = 0.0;
+
+struct Hbro 
+{
+
+  void setupPins ()
+  {
+      pinMode(motorA1, OUTPUT);
+      pinMode(motorA2, OUTPUT);
+      pinMode(motorB1, OUTPUT);
+      pinMode(motorB2, OUTPUT);
+
+  }
+  void fremad()
+  {
+
+    
+        /* code */
+      digitalWrite(motorA1, 1); // A1 er A1A på hbroen Værdi er 0 eller 1 - 1 er on 0 er off
+      digitalWrite(motorA2, 0);
+      digitalWrite(motorB1, 1);
+      digitalWrite(motorB2, 0);
+      
+      // A1 og B1 skal begge være slået til, og hjulet /moteren til at rotere i samme retning
+  }
+  void bagud ()
+  {
+    digitalWrite(motorA1, 0);
+    digitalWrite(motorA2, 1);
+    digitalWrite(motorB1, 0);
+    digitalWrite(motorB2, 1);
+    // Begge motorer drejer i den modsatte retning, hvilket får roveren til at køre baglæns
+
+  }
+  void venstre ()
+  {
+    digitalWrite(motorA1, 0);
+    digitalWrite(motorA2, 1);
+    digitalWrite(motorB1, 1);
+    digitalWrite(motorB2, 0);
+
+    // Ved at sætte fx venstre hjul til at køre baglæns 
+    // og højre hjul til at køre forlæns, kan vi dreje til venstre
+
+  }
+  void hojre ()
+  {
+    digitalWrite(motorA1, 1);
+    digitalWrite(motorA2, 0);
+    digitalWrite(motorB1, 0);
+    digitalWrite(motorB2, 1);
+    // samme logik som leftturn
+
+  }
+  void stopmotor()
+  {
+    digitalWrite(motorA1, 0);
+    digitalWrite(motorA2, 0);
+    digitalWrite(motorB1, 0);
+    digitalWrite(motorB2, 0);
+  }
+};
+
+
+struct Hbro2
+{
+
+  void setupPins ()
+  {
+      pinMode(motorC1, OUTPUT);
+      pinMode(motorC2, OUTPUT);
+      pinMode(motorD1, OUTPUT);
+      pinMode(motorD2, OUTPUT);
+
+  }
+  void fremad ()
+  {
+      digitalWrite(motorC1, 1); // C1 er A1A på hbroen Værdi er 0 eller 1 - 1 er on 0 er off
+      digitalWrite(motorC2, 0);
+      digitalWrite(motorD1, 1);
+      digitalWrite(motorD2, 0);
+      // C1 og BB skal begge være slået til, og hjulet /moteren til at rotere i samme retning
+  }
+  void bagud ()
+  {
+    digitalWrite(motorC1, 0);
+    digitalWrite(motorC2, 1);
+    digitalWrite(motorD1, 0);
+    digitalWrite(motorD2, 1);
+    // Begge motorer drejer i den modsatte retning, hvilket får roveren til at køre baglæns
+
+  }
+  void venstre ()
+  {
+    digitalWrite(motorC1, 0);
+    digitalWrite(motorC2, 1);
+    digitalWrite(motorD1, 1);
+    digitalWrite(motorD2, 0);
+
+    // Ved at sætte fx venstre hjul til at køre baglæns 
+    // og højre hjul til at køre forlæns, kan vi dreje til venstre
+
+  }
+  void hojre ()
+  {
+    digitalWrite(motorC1, 1);
+    digitalWrite(motorC2, 0);
+    digitalWrite(motorD1, 0);
+    digitalWrite(motorD2, 1);
+    // samme logik som leftturn
+
+  }
+  void stopmotor ()
+  {
+    digitalWrite(motorC1, 0);
+    digitalWrite(motorC2, 0);
+    digitalWrite(motorD1, 0);
+    digitalWrite(motorD2, 0);
+
+}
+};
+
+Hbro forhjul;
+Hbro2 baghjul;
+
+void ToFSensor1 (void*parameter) //FX VENSTRE ToF
+{
+
+    while (true)
+    {
+
+VL53L0X_RangingMeasurementData_t measure;
+
+//Serial.print ("Reading measurement..");
+ToF1.rangingTest(&measure, false);
+
+if (measure.RangeStatus != 4) {
+    //Serial.print("Distance: ");
+    Serial.print(measure.RangeMilliMeter);
+    Serial.println(" mm");
+  } else {
+    Serial.println("Out of range");
+  }
+  long ToF1Distance = measure.RangeMilliMeter;
+  currentDistanceToF1 = ToF1Distance;
+  xQueueSend(ToFQueue1, &ToF1Distance, portMAX_DELAY);
+ 
+  Serial.print("Sensor 1 distance:   ");
+  //Serial.println(distance);
+  vTaskDelay(1000 / portTICK_PERIOD_MS); //Dette delay skal ændres, dette er kun for tests!
+
+    }
+
+}
+
+void ToFSensor2 (void*parameter)
+{
+ while (true)
+    {
+
+VL53L0X_RangingMeasurementData_t measure2;
+
+//Serial.print ("Reading measurement..");
+ToF2.rangingTest(&measure2, false);
+
+if (measure2.RangeStatus != 4) {
+    //Serial.print("Distance: ");
+    Serial.print (" ");
+    Serial.print(measure2.RangeMilliMeter);
+    Serial.println(" mm");
+  } else {
+    Serial.println("Out of range");
+  }
+  long ToF2Distance = measure2.RangeMilliMeter;
+  currentDistanceToF2 = ToF2Distance;
+  xQueueSend(ToFQueue2, &ToF2Distance, portMAX_DELAY);
+  Serial.print("Sensor 2 distance:   ");
+  
+  vTaskDelay(1000 / portTICK_PERIOD_MS); // dette delay skal ændres, kun for tests!
+
+    }
+
+}
+
+void UltralydsSensor (void*parameter)
+    {
+      
+      pinMode(trigPin, OUTPUT);
+      pinMode(echoPin, INPUT);
+      while (true)
+      {
+        digitalWrite(trigPin, LOW);
+        //vTaskDelay(2 / portTICK_PERIOD_MS) (Minumum 1 milisekund)
+        delayMicroseconds(2);
+        digitalWrite(trigPin, HIGH);
+        delayMicroseconds(10);
+        digitalWrite(trigPin, HIGH);
+        long duration = pulseInLong(echoPin, HIGH);
+        long UltraDistance = (duration/2.0) /29.1;
+        xQueueSend(UltDistances, &UltraDistance, portMAX_DELAY);
+        currentDistanceULS = UltraDistance;
+        Serial.println(UltraDistance);
+
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        Serial.print("Distance: ");
+      }
+      
+    }
+
+void Movement(void*parameter)
+{
+    while (true)
+    {
+      
+    
+    
+    long Ultradistance;
+    long ToF1Distance;     //Venstre fx
+    long ToF2Distance;     //Højre fx
+    if  (xQueueReceive(UltDistances, &Ultradistance, 10 / portTICK_PERIOD_MS) ==pdTRUE){}
+    if (xQueueReceive(ToFQueue1, &ToF1Distance, 10 / portTICK_PERIOD_MS) ==pdTRUE){}
+    if (xQueueReceive(ToFQueue2, &ToF2Distance, 10 / portTICK_PERIOD_MS) ==pdTRUE){}
+
+
+
+
+    if (Ultradistance < 25)
+    {
+        forhjul.bagud();
+        baghjul.bagud();
+    }
+    else if (Ultradistance > 25)
+    {
+        forhjul.fremad();
+        baghjul.fremad();
+    }
+    else if (ToF1Distance < 50 && ToF2Distance > 100)
+    {
+      forhjul.hojre();
+      baghjul.hojre();
+    }
+    else if (ToF2Distance < 50 && ToF1Distance > 100)
+    {
+      forhjul.venstre();
+      baghjul.venstre();
+    }
+    
+    else 
+    forhjul.stopmotor ();
+    baghjul.stopmotor();
+    
+    }
+
+
+}
+
+void setup() {
+
+Serial.begin(115200);
+Wire.begin();
+
+pinMode (XSHUT1,OUTPUT);
+pinMode(XSHUT2, OUTPUT);
+
+//Sluk begge ToF sensorer først
+digitalWrite(XSHUT1, LOW); 
+digitalWrite(XSHUT2, LOW);
+delay(100);
+
+//Tænd sensor 1
+digitalWrite(XSHUT1, HIGH);
+delay(200);
+ToF1.begin();
+ToF1.setAddress(0x40);
+delay(100);
+
+//Tænd sensor 2
+digitalWrite(XSHUT2, HIGH);
+delay(200);
+ToF2.begin();
+ToF2.setAddress(0x41);
+
+//Queue Sizes
+int UltQueueSize = 5;
+int ToF1QueueSize = 5;
+int ToF2QueueSize = 5;
+
+//Create Queues
+UltDistances = xQueueCreate(UltQueueSize, sizeof(long));
+ToFQueue1 = xQueueCreate(ToF1QueueSize, sizeof(long));
+ToFQueue2 = xQueueCreate(ToF2QueueSize, sizeof(long));
+
+
+
+//Tasks
+xTaskCreatePinnedToCore(Movement,"Drive",4096,NULL,1,&MovementTask,1);
+xTaskCreatePinnedToCore(UltralydsSensor,"Ultralydssensor",4096,NULL,1,&Ultra,0);
+xTaskCreatePinnedToCore(ToFSensor1, "TimeOfFlight", 4096, NULL, 1, &ToFTask1, 1);
+xTaskCreatePinnedToCore(ToFSensor2, "TimeOfFlight2", 4096, NULL, 1, &ToFTask2, 1);
+         
+
+
+}
+
+
+
+void loop() {
+  // put your main code here, to run repeatedly:
+}
+
+
+
+
+// put function definitions here:
+
