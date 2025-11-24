@@ -33,9 +33,6 @@ QueueSetHandle_t UltDistances = NULL;
 QueueSetHandle_t ToFQueue1 = NULL;
 QueueSetHandle_t ToFQueue2 = NULL;
 
-volatile float currentDistanceULS = 0.0;
-volatile float currentDistanceToF1 = 0.0;
-volatile float currentDistanceToF2 = 0.0;
 
 struct Hbro 
 {
@@ -179,7 +176,7 @@ if (measure.RangeStatus != 4) {
     Serial.println("Out of range");
   }
   long ToF1Distance = measure.RangeMilliMeter;
-  currentDistanceToF1 = ToF1Distance;
+  
   xQueueSend(ToFQueue1, &ToF1Distance, portMAX_DELAY);
  
   Serial.print("Sensor 1 distance:   ");
@@ -209,7 +206,7 @@ if (measure2.RangeStatus != 4) {
     Serial.println("Out of range");
   }
   long ToF2Distance = measure2.RangeMilliMeter;
-  currentDistanceToF2 = ToF2Distance;
+  
   xQueueSend(ToFQueue2, &ToF2Distance, portMAX_DELAY);
   Serial.print("Sensor 2 distance:   ");
   
@@ -235,7 +232,7 @@ void UltralydsSensor (void*parameter)
         long duration = pulseInLong(echoPin, HIGH);
         long UltraDistance = (duration/2.0) /29.1;
         xQueueSend(UltDistances, &UltraDistance, portMAX_DELAY);
-        currentDistanceULS = UltraDistance;
+      
         Serial.println(UltraDistance);
 
         vTaskDelay(100 / portTICK_PERIOD_MS);
