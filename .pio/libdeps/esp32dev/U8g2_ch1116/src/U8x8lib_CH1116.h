@@ -1,0 +1,9 @@
+#pragma once
+#include <U8g2lib.h>
+#include "u8x8_d_ch1116_128x64.h"
+// #include "u8g2_setup_ch1116_i2c_128x64.h"
+
+class U8X8_CH1116_128X64_NONAME_HW_I2C : public U8X8 {
+  public:
+    U8X8_CH1116_128X64_NONAME_HW_I2C(uint8_t reset = U8X8_PIN_NONE, uint8_t clock = U8X8_PIN_NONE, uint8_t data = U8X8_PIN_NONE);
+};
