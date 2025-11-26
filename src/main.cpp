@@ -18,7 +18,11 @@
 #define batteryLevelPin 36
 #define SDAPin 21
 #define SCKPin 22
+#define BTN_manual //definér pin senere. Denne knap er til at aktivere ManualTask
+#define BTN_auto //definér pin senere. Denne knap er til at aktivere DriveTask
+#define BTN_robot //definér pin senere. Denne knap er til at aktivere RobotarmTask
 
+U8G2_SH1106_128X32_VISIONOX_F_HW_I2C Display1(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 struct Hbro 
 {    
@@ -152,8 +156,6 @@ struct OLED
 {
     void setup()
     {
-        U8G2_SH1106_128X32_VISIONOX_F_HW_I2C Display1(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
-
         Display1.begin();
     }
     void OLEDWrite()
@@ -185,9 +187,78 @@ Hbro2 baghjul;
 Ultralydssensor frontSensor;
 
 TaskHandle_t UltraTaskHandle = NULL;
+TaskHandle_t ManualTaskHandle = NULL;
 TaskHandle_t DriveTaskHandle = NULL;
+TaskHandle_t RobotTaskHandle = NULL;
 
 QueueSetHandle_t Distances = NULL;
+
+void ButtonTask(void *parameter)
+{
+    bool prevManual = false;
+    bool prevDrive = false;
+    bool prevRobotarm = false;
+
+    while(true);
+    {
+        // Ved ikke om dette virker, så andre må gerne vurdere om der skal laves ændringer.
+        bool manualNow = digitalRead(BTN_manual) == LOW;
+        bool autoNow = digitalRead(BTN_auto) == LOW;
+        bool robotNow = digitalRead(BTN_robot) == LOW;
+
+        // Activation of Manual mode
+        if (manualNow && !prevManual)
+        {
+            Serial.println("Manual mode activated");
+
+            //Suspension of all other tasks than "Manual"
+            vTaskSuspend(DriveTaskHandle);
+            vTaskSuspend(UltraTaskHandle);
+            vTaskSuspend(RobotTaskHandle);
+            // vTaskSuspend(); Insert suspension of ToF tasks!!!
+
+            // Activation of "Manual"
+            vTaskResume(ManualTaskHandle);
+        }
+
+        // Activation of Drive mode
+        if (autoNow && !prevDrive)
+        {
+            Serial.println("Auto mode activated");
+
+            // Suspension of other tasks
+            vTaskSuspend(ManualTaskHandle);
+            vTaskSuspend(RobotTaskHandle);
+
+            // Activation of all tasks needed for DriveTask
+            vTaskResume(DriveTaskHandle);
+            vTaskResume(UltraTaskHandle);
+            // Insert ToF tasks here!!!
+            // Insert ToF tasks here!!!
+            // Insert ToF tasks here!!!
+            // Insert ToF tasks here!!!
+        }
+
+        // Activation of Robot Arm
+        if (robotNow && !prevRobotarm)
+        {
+            Serial.println("Robot Arm activated");
+
+            //Suspension of all other tasks than "RobotTask"
+            vTaskSuspend(DriveTaskHandle);
+            vTaskSuspend(UltraTaskHandle);
+            vTaskSuspend(ManualTaskHandle);
+            // vTaskSuspend(); Insert suspension of ToF tasks!!!
+
+            vTaskResume(RobotTaskHandle);
+        }
+
+        prevManual = manualNow;
+        prevDrive = autoNow;
+
+        vTaskDelay(30 / portTICK_PERIOD_MS);
+    }
+}
 
 void UltraTask(void *parameter)
 {
@@ -214,6 +285,19 @@ void UltraTask(void *parameter)
 
     vTaskDelay(200 / portTICK_PERIOD_MS);
   }
+}
+
+void ManualTask(void *parameter)
+{
+    while(true);
+    {
+        // Task is activated, and the rover is now controlled manually
+        // Manual motor control goes here!!!
+
+        
+
+
+    }
 }
 
 void DriveTask(void *parameter)

@@ -1,0 +1,23 @@
+{
+  "name": "U8g2_ch1116",
+  "version": "1.0.2",
+  "keywords": ["u8g2", "ch1116", "oled", "display", "i2c"],
+  "description": "Port of U8g2 library for CH1116 I2C 128x64 OLED displays",
+  "authors": [
+    {
+      "name": "Georgines Bezerra Pereira",
+      "email": "geoginae.p2@gmail.com"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/georgines/u8g2_ch1116.git"
+  },
+  "license": "MIT",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32", "atmelavr", "ststm32"],
+  "examples": "examples/*",
+  "dependencies": {
+    "olikraus/U8g2": "2.36.9"
+  }
+}
