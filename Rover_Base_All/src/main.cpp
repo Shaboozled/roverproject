@@ -32,6 +32,7 @@
         
 */
 
+//  PIN configurations
 #define trigPin 32
 #define echoPin 35
 #define xShut_Pin 2
@@ -46,6 +47,7 @@
 #define motorD1 16
 #define motorD2 17
 
+//  Class pointers
 Adafruit_PWMServoDriver pwm;
 U8G2_SH1106_128X32_VISIONOX_F_HW_I2C Display1(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 Adafruit_VL53L0X ToFSensor1;
@@ -69,95 +71,37 @@ TaskHandle_t RobotTaskHandle = NULL;
 int btnSettings = 0,  BTN_ChangeMode = 0, pulseleng;
 long BTN_ChangeMode_Time = 0, BTN_ChangeMode_Last = 0;
 char oledInput[11];
+int motorPins[] = {motorA1, motorA2, motorB1, motorB2, motorC1, motorC2, motorD1, motorD2}; //  Motor definition
+                                                                                            //  DRIVE MODES
+int driveModes[][8] = { {LOW,   LOW,    LOW,    LOW,    LOW,    LOW,    LOW,    LOW},       //  STOP
+                        {HIGH,  LOW,    HIGH,   LOW,    HIGH,   LOW,    HIGH,   LOW},       //  FREMAD
+                        {LOW,   HIGH,   LOW,    HIGH,   LOW,    HIGH,   LOW,    HIGH},      //  BAGUD
+                        {LOW,   HIGH,   HIGH,   LOW,    LOW,    HIGH,   HIGH,   LOW},       //  VENSTRE
+                        {HIGH,  LOW,    LOW,    HIGH,   HIGH,   LOW,    LOW,    HIGH},      //  HØJRE
+};
 
-//  Struct creations with creators
-struct Hbro{    
-    // Pin setup for motors
-    // Noter til motorer er outdated, opdatér gerne hvis det lyster
-    // Alle hjul bliver sat op sammen, på samme måde ved højre/venstre
-    
-    void setupPins() 
-    {
-        pinMode(motorA1, OUTPUT);
-        pinMode(motorA2, OUTPUT);
-        pinMode(motorB1, OUTPUT);
-        pinMode(motorB2, OUTPUT);
-        pinMode(motorC1, OUTPUT);
-        pinMode(motorC2, OUTPUT);
-        pinMode(motorD1, OUTPUT);
-        pinMode(motorD2, OUTPUT);
+//  Creating the different structs with a Variable creator at the end
+struct Hbro{
+    void setupPins(){
+        for (size_t i = 0; i < 8; i++)
+        {
+            pinMode(motorPins[i], OUTPUT);
+        }
     }
-    void fremad()
-    {
-        digitalWrite(motorA1, 1); // A1 = A1A på Hbroen, og er den der får motor 1 til at køre fremad.
-        digitalWrite(motorA2, 0);
-        digitalWrite(motorB1, 1); // B1 = B1A på Hbroen, og er den der får motor 2 til at køre fremad.
-        digitalWrite(motorB2, 0);
-
-        digitalWrite(motorC1, 1); 
-        digitalWrite(motorC2, 0);
-        digitalWrite(motorD1, 1); 
-        digitalWrite(motorD2, 0);
-    }
-    void bagud()
-    {
-        digitalWrite(motorA1, 0);
-        digitalWrite(motorA2, 1); // A2 = A1B på Hbroen, og er den der får motor 1 til at køre bagud.
-        digitalWrite(motorB1, 0);
-        digitalWrite(motorB2, 1); // B2 = B1B på Hbroen, og er den der får motor 2 til at køre bagud.
-        
-        digitalWrite(motorC1, 0);
-        digitalWrite(motorC2, 1); 
-        digitalWrite(motorD1, 0);
-        digitalWrite(motorD2, 1); 
-    }
-    void venstre()
-    {
-        digitalWrite(motorA1, 0);
-        digitalWrite(motorA2, 1); // Motor 1, den venstre motor, kører bagud, for at dreje mod venstre.
-        digitalWrite(motorB1, 1); // Motor 2, den højre motor, kører fremad, for at dreje mod venstre.
-        digitalWrite(motorB2, 0);
-        
-        digitalWrite(motorC1, 0);
-        digitalWrite(motorC2, 1); 
-        digitalWrite(motorD1, 1); 
-        digitalWrite(motorD2, 0);
-    }
-    void hojre()
-    {
-        digitalWrite(motorA1, 1); // Motor 1, venstre motor, kører fremad, for at dreje mod højre.
-        digitalWrite(motorA2, 0);
-        digitalWrite(motorB1, 0);
-        digitalWrite(motorB2, 1); // Motor 2, højre motor, kører bagud, for at dreje mod højre.
-        
-        digitalWrite(motorC1, 1);
-        digitalWrite(motorC2, 0);
-        digitalWrite(motorD1, 0);
-        digitalWrite(motorD2, 1);
-    }
-    void stopmotor()
-    {
-        digitalWrite(motorA1, 0);
-        digitalWrite(motorA2, 0);
-        digitalWrite(motorB1, 0);
-        digitalWrite(motorB2, 0);
-
-        digitalWrite(motorC1, 0);
-        digitalWrite(motorC2, 0);
-        digitalWrite(motorD1, 0);
-        digitalWrite(motorD2, 0);
+    void driveFunction(int driveMode){
+        for (size_t i = 0; i < 8; i++)
+        {
+            digitalWrite(motorPins[i], driveModes[driveMode][i]);
+        }
     }
 };
 Hbro alleHjul;
 
-struct OLED
-{
-    void setup()
-    {
+struct OLED{
+    void setup(){
         Display1.begin();
     }
-    void OLEDWrite(char* Text)
-    {
+    void OLEDWrite(char* Text){
         Display1.clearBuffer();                 // clear the internal memory
         Display1.setFont(u8g2_font_4x6_mf);     // choose a suitable font
         Display1.drawStr(2,5, Text);            // write something to the internal memory
@@ -167,14 +111,11 @@ struct OLED
 };
 OLED display;
 
-struct Battery
-{
-  void SetupBattery()
-  {
+struct Battery{
+  void SetupBattery(){
       pinMode(batteryLevelPin, INPUT);
   }
-  char* readBatteryLevel()
-  {
+  char* readBatteryLevel(){
       int analogInput = analogRead(batteryLevelPin);
       float rawVolts = analogInput * 3.3/4096;
 
@@ -202,75 +143,74 @@ struct PWMBoard{
 };
 PWMBoard structPWM;
 
-void btnTask(void *paramter)
-{
-    for(;;)
-    {
+//  Task creations
+//  btnTask controls what mode we are currently in
+//  0   -   Default, does nothing
+//  1   -   Manual controls over the rover
+//  2   -   Auto driving, with range measuring
+//  3   -   Robot Arm, with manual controls
+void btnTask(void *paramter){
+    for(;;){
         BTN_ChangeMode = myData.interruptBtn;
-        Serial.println(BTN_ChangeMode);
 
-        // Activation of Manual mode
-        if (BTN_ChangeMode == 1)
-        {
-            Serial.println("Manual mode activated");
-
-            //Suspension of all other tasks than "Manual"
+        if (BTN_ChangeMode == 1){
             vTaskSuspend(AutoTaskHandle);
             vTaskSuspend(RobotTaskHandle);
-
             // Activation of "Manual"
             vTaskResume(ManualTaskHandle);
         }
-
-        // Activation of Drive mode
-        if (BTN_ChangeMode == 2)
-        {
-            Serial.println("Auto mode activated");
-
-            // Suspension of other tasks
+        
+        if (BTN_ChangeMode == 2){
             vTaskSuspend(ManualTaskHandle);
             vTaskSuspend(RobotTaskHandle);
-
-            // Activation of all tasks needed for DriveTask
+            // Activation of "DriveTask"
             vTaskResume(AutoTaskHandle);
         }
-
-        // Activation of Robot Arm
-        if (BTN_ChangeMode == 3)
-        {
-            Serial.println("Robot Arm activated");
-
-            //Suspension of all other tasks than "RobotTask"
+        
+        if (BTN_ChangeMode == 3){
             vTaskSuspend(AutoTaskHandle);
             vTaskSuspend(ManualTaskHandle);
-
+            // Activation of "RobotTask"
             vTaskResume(RobotTaskHandle);
         }
-
         vTaskDelay(30 / portTICK_PERIOD_MS);
     }
 }
 
-void ManualTask(void *parameter)
-{
-    while(true);
-    {
+//  Manual task
+//  Controls the rover from the Joysticks
+void ManualTask(void *parameter){
+    for(;;){
         // Task is activated, and the rover is now controlled manually
         // Manual motor control goes here!!!
-
         
-
-
+        if (myData.y1 < 50){            //  FREMAD
+            alleHjul.driveFunction(1);
+        }
+        if (myData.y1 > 200){           //  BAGUD
+            alleHjul.driveFunction(2);
+        }
+        if (myData.x1 < 50){            //  VENSTRE
+            alleHjul.driveFunction(3);
+        }
+        if (myData.x1 > 200){           //  HØJRE
+            alleHjul.driveFunction(4);
+        }
+        else{                           //  STOP
+            alleHjul.driveFunction(0);
+        }
     }
 }
 
-void AutoTask(void *parameter)
-{
+//  Autopilot task
+//  Self driving mode
+void AutoTask(void *parameter){
     long distance = 0;
     long rangeMeasure1 = 0;
     long rangeMeasure2 = 0;
-    for (;;)
-    {
+
+    for (;;){
+        //  Send pulse
         digitalWrite(trigPin, LOW);
         delayMicroseconds(2);
         digitalWrite(trigPin, HIGH);
@@ -287,36 +227,32 @@ void AutoTask(void *parameter)
 
         vTaskDelay(200 / portTICK_PERIOD_MS);
 
-        if (distance > 25)
-        {
+        if (distance > 25){
+            alleHjul.driveFunction(1);      //  FREMAD
             Serial.println("No obstacles, moving forward");
-            alleHjul.fremad();
         }
-        else if (distance > 0 && distance <= 25)
-        {
+        else if (distance > 0 && distance <= 25){
+            alleHjul.driveFunction(2);      //  BAGUD
             Serial.println("Too close, reversing!");
-            alleHjul.bagud();
             vTaskDelay(400 / portTICK_PERIOD_MS);
-            alleHjul.stopmotor();
+            alleHjul.driveFunction(0);      //  STOP MOTOR
         }
-        else
-        {
-            alleHjul.stopmotor();
+        else{
+            alleHjul.driveFunction(0);      //  STOP MOTOR
         }
-        if (rangeMeasure1 < 50 && rangeMeasure2 > 100)
-        {
-            alleHjul.hojre();
+        if (rangeMeasure2 < 50 && rangeMeasure1 > 100){
+            alleHjul.driveFunction(3);      // VENSTRE
         }
-        else if (rangeMeasure2 < 50 && rangeMeasure1 > 100)
-        {
-            alleHjul.venstre();
+        else if (rangeMeasure1 < 50 && rangeMeasure2 > 100){
+            alleHjul.driveFunction(4);      // HØJRE
         }
     }
 }
 
+//  Robot task
+//  Control the robot arm from the Joysticks
 void RobotTask(void *parameter){
-    for (;;)
-    {
+    for (;;){
         if (myData.x1 <= 50){structPWM.servoClockwise(2);}
         if (myData.x1 >= 200){structPWM.servoCounterClockwise(2);}
         if (myData.y1 <= 50){structPWM.servoClockwise(3);}
@@ -329,8 +265,8 @@ void RobotTask(void *parameter){
     vTaskDelay(400 / portTICK_PERIOD_MS);
 }
 
-void setup() 
-{
+//  Default setup
+void setup(){
     Serial.begin(9600);
     Serial.println("Starting FreeRTOS Rover");
     delay(500);
@@ -342,8 +278,6 @@ void setup()
 
     Serial.println("Pins Setup\n");
     alleHjul.setupPins();
-    //frontSensor.setupULS();
-    //tofSensor.SetupTOF();
     display.setup();
     batteri.SetupBattery();
 
@@ -361,7 +295,6 @@ void setup()
     delay(100);
     pinMode(xShut_Pin, INPUT);
     delay(500);
-
     
     Serial.println("WiFi Setup\n");
     // Set device as a Wi-Fi Station
@@ -375,6 +308,7 @@ void setup()
     delay(500);
 
     Serial.println("Creating Tasks\n");
+
     // Create tasks
     xTaskCreatePinnedToCore(AutoTask, "DriveTask", 4096, NULL, 1, &AutoTaskHandle, 0);
     vTaskSuspend(AutoTaskHandle);
@@ -388,7 +322,7 @@ void setup()
     Serial.println("Setup done!\n\n");
 }
 
-void loop()
-{
-    //display.OLEDWrite(batteryMeasure.readBatteryLevel());
+//  Default loop
+void loop(){
+    //  display.OLEDWrite(batteryMeasure.readBatteryLevel());
 }
