@@ -20,7 +20,7 @@ struct Joystick {
   int x2;
   int y2;
   int btn2;
-  int interruptBtn;
+  int interruptBtn = 0;
 };
 
 // Create a struct_message called myData
@@ -28,6 +28,4 @@ Joystick myData;
 
 // callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("\r\nLast Packet Send Status:\t");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }

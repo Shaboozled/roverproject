@@ -1,10 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include <Arduino.h>
 #include <Adafruit_PWMServoDriver.h>
-//#include <Wire.h>
-//#include "Joystick.h"
-//#include "PWMBoard.h"
-//#include "Buttons.h"
 #include "Struct_WiFi.h"
 
 #define JOYSTICK1_BTN_PIN 32
@@ -18,34 +14,31 @@
 #define ANALOG_X_CORRECTION 128
 #define ANALOG_Y_CORRECTION 128
 
-//PWMBoard structPWM;
-//ButtonSwitch btns;
-//Joystick joystick;
-
 esp_now_peer_info_t peerInfo;
-int BTN_ChangeMode = 0;
 long BTN_ChangeMode_Time, BTN_ChangeMode_Last;
 
+//  Button changer for mode selection.
+//  There is a delay function to prevent the button being pressed too fast
+//  or giving out a double tap
 void changeMode()
 {
-    Serial.println("Button pressed");
     BTN_ChangeMode_Time = millis();
     if (BTN_ChangeMode_Time - BTN_ChangeMode_Last > 500)
     {
-    if (BTN_ChangeMode == 0)
-        BTN_ChangeMode = 1;
-    else if (BTN_ChangeMode == 1)
-        BTN_ChangeMode = 2;
-    else if (BTN_ChangeMode == 2)
-        BTN_ChangeMode = 3;
-    else if (BTN_ChangeMode == 3)
-        BTN_ChangeMode = 1;
+    if (myData.interruptBtn == 0)
+        myData.interruptBtn = 1;
+    else if (myData.interruptBtn == 1)
+        myData.interruptBtn = 2;
+    else if (myData.interruptBtn == 2)
+        myData.interruptBtn = 3;
+    else if (myData.interruptBtn == 3)
+        myData.interruptBtn = 1;
     }
     BTN_ChangeMode_Last = BTN_ChangeMode_Time;
 }
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(115200);
     
     Serial.println("Starting");
     delay(2500);
@@ -53,14 +46,14 @@ void setup() {
     pinMode(JOYSTICK2_BTN_PIN, INPUT_PULLUP);
     
     pinMode(25, INPUT_PULLUP);
+    pinMode(26, INPUT_PULLUP);
+    pinMode(27, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(25), changeMode, FALLING);
+    attachInterrupt(digitalPinToInterrupt(26), changeMode, FALLING);
+    attachInterrupt(digitalPinToInterrupt(27), changeMode, FALLING);
 
     WiFi.mode(WIFI_STA);
     esp_now_init();
-
-    //btns.btnSetup();
-    //structPWM.PWM_Setup();
-    //joystick.JoyStick_Setup();
     
     // Once ESPNow is successfully Init, we will register for Send CB to
     // get the status of Trasnmitted packet
@@ -79,23 +72,13 @@ void setup() {
 }
 
 void loop() {
+    //  Move joystick inputs to myData connection
     myData.x2 = map(analogRead(JOYSTICK2_X_PIN), 0, 4096, 0, 256);
     myData.y2 = map(analogRead(JOYSTICK2_Y_PIN), 0, 4096, 0, 256);
     myData.btn2 = digitalRead(JOYSTICK2_BTN_PIN) == 0;
-    myData.interruptBtn = BTN_ChangeMode;
 
+    //  Send the data to the other ESP-32
     esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
 
-    delay(100);
-    /*
-    //  Joystick movement -- right and left only
-    if (analog.x1 <= -100){ structPWM.servoClockwise(0);}
-    else if (analog.x1 >= 100){ structPWM.servoCounterClockwise(0);}
-    else if (analog.x2 <= -100){ structPWM.servoClockwise(1);}
-    else if (analog.x2 >= 100){ structPWM.servoCounterClockwise(1);}
-    
-    //  Joystick buttons
-    if (analog.pressed1){ structPWM.servoClockwise(2);}
-    else if (analog.pressed2){ structPWM.servoCounterClockwise(2);}
-    */
+    delay(10);
 }
