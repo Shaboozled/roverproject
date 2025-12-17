@@ -11,20 +11,20 @@
 
 /*                          ___________________________
        BATTERY POWER --     3.3V                    GND     -- BATTERY GROUND
-                            EN                      23
+                            EN                      23      -- X-SHUT TOF1
          BATTERY PIN --     VP                      22      -- SCK
-                            VN                      TX
+                            VN                      TX      -- X-SHUT TOF2
                             34                      RX
-            ULS ECHO --     35                      21      -- SDA
-         ULS TRIGGER --     32                      GND
-            MOTOR A1 --     33                      19
+                            35                      21      -- SDA
+            ULS ECHO --     32                      GND
+         ULS TRIGGER --     33                      19      -- MOTOR C1
             MOTOR A2 --     25                      18      -- MOTOR C2
-                            26                      5       -- MOTOR C1
+                            26                      5       
             MOTOR B1 --     27                      17      -- MOTOR D2
             MOTOR B2 --     14                      16      -- MOTOR D1
                             12                      4
                             GND                     0
-                            13                      2       -- X-SHUT TOF1
+                            13                      2       
                             D2                      15
                             D3                      D1
                             CMD        ____         D0
@@ -33,9 +33,10 @@
 */
 
 //  PIN configurations
-#define trigPin 32
-#define echoPin 35
-#define xShut_Pin 2
+#define trigPin 33
+#define echoPin 32
+#define xShut_Pin1 25
+#define xShut_Pin2 5
 #define batteryLevelPin 36
 
 #define motorA1 18
@@ -46,8 +47,9 @@
 //  Class constructers
 Adafruit_PWMServoDriver pwm;
 U8G2_SH1106_128X32_VISIONOX_F_HW_I2C Display1(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
-Adafruit_VL53L0X ToFSensor1;
-Adafruit_VL53L0X ToFSensor2;
+Adafruit_VL53L0X ToFSensor1 = Adafruit_VL53L0X();
+Adafruit_VL53L0X ToFSensor2 = Adafruit_VL53L0X();
+
 VL53L0X_RangingMeasurementData_t measure1;
 VL53L0X_RangingMeasurementData_t measure2;
 
@@ -64,8 +66,9 @@ TaskHandle_t AutoTaskHandle = NULL;
 TaskHandle_t RobotTaskHandle = NULL;
 
 //  Used variables
-int btnSettings = 0,  BTN_Mode = 0, pulseleng, rangeMeasure1 = 0, rangeMeasure2 = 0;
-long BTN_ChangeMode_Time = 0, BTN_ChangeMode_Last = 0, duration = 0, distance = 0;
+int btnSettings = 0,  BTN_Mode = 0, pulseleng;
+long BTN_ChangeMode_Time = 0, BTN_ChangeMode_Last = 0;
+
 char oledInput[11];
 int motorPins[4] = {motorA1, motorA2, motorB1, motorB2};//  Motor definition
                                                         //  DRIVE MODES
@@ -89,6 +92,12 @@ struct Hbro{
         {
             digitalWrite(motorPins[i], driveModes[driveMode][i]);
         }
+        vTaskDelay(75 / portTICK_PERIOD_MS);
+        for (size_t i = 0; i < 4; i++)
+        {
+            digitalWrite(motorPins[i], driveModes[0][i]);
+        }
+        vTaskDelay(25 / portTICK_PERIOD_MS);
     }
 };
 Hbro alleHjul;
@@ -122,15 +131,71 @@ struct Battery{
 };
 Battery batteri;
 
+struct RangeSensors{
+    int rangeMeasure1 = 0, rangeMeasure2 = 0;
+    long duration = 0, distance = 0, range1MM = 0, range2MM = 0;
+
+    void setID() {
+        // all reset
+        digitalWrite(xShut_Pin1, LOW);    
+        digitalWrite(xShut_Pin2, LOW);
+        delay(10);
+        // all unreset
+        digitalWrite(xShut_Pin1, HIGH);
+        digitalWrite(xShut_Pin2, HIGH);
+        delay(10);
+
+        // activating LOX1 and resetting LOX2
+        digitalWrite(xShut_Pin1, HIGH);
+        digitalWrite(xShut_Pin2, LOW);
+
+        // initing LOX1
+        if(!ToFSensor1.begin(0x2A)) {
+            Serial.println(F("Failed to boot first VL53L0X"));
+            while(1);
+        }
+        delay(10);
+
+        // activating LOX2
+        digitalWrite(xShut_Pin2, HIGH);
+        delay(10);
+
+        //initing LOX2
+        if(!ToFSensor2.begin(0x2B)) {
+            Serial.println(F("Failed to boot second VL53L0X"));
+            while(1);
+        }
+    }
+    void readULSDistances(){
+        //  Send pulse
+        digitalWrite(trigPin, HIGH);
+        vTaskDelay(5 / portTICK_PERIOD_MS);
+        digitalWrite(trigPin, LOW);
+
+        // Read echo
+        duration = pulseInLong(echoPin, HIGH);
+        distance = (duration/2.0) / 29.1;
+    }
+    void readToFDistances(){
+        // Read ToFs
+        ToFSensor1.rangingTest(&measure1, false);
+        ToFSensor2.rangingTest(&measure2, false);
+
+        range1MM = measure1.RangeMilliMeter;
+        range2MM = measure2.RangeMilliMeter;
+    }
+};
+RangeSensors range;
+
 struct PWMBoard{
     void servoClockwise(int chan){
         pwm.setPWM(chan, 0, SERVO_CLOSING_DEADZONE);
-        delay(150);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
         pwm.setPWM(chan, 0, SERVOSTOP);
     }
     void servoCounterClockwise(int chan){
         pwm.setPWM(chan, 0, SERVO_OPENING_DEADZONE);
-        delay(150);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
         pwm.setPWM(chan, 0, SERVOSTOP);
     }
 };
@@ -145,18 +210,21 @@ PWMBoard structPWM;
 void btnTask(void *paramter){
     for(;;){
         while(myData.interruptBtn == 1){
+            vTaskSuspend(AutoTaskHandle);
             vTaskSuspend(RobotTaskHandle);
             vTaskResume(ManualTaskHandle);
         }
         while(myData.interruptBtn == 2){
             vTaskSuspend(ManualTaskHandle);
+            vTaskSuspend(RobotTaskHandle);
             vTaskResume(AutoTaskHandle);
         }
         while(myData.interruptBtn == 3){
             vTaskSuspend(AutoTaskHandle);
+            vTaskSuspend(ManualTaskHandle);
             vTaskResume(RobotTaskHandle);
         }
-        vTaskDelay(300 / portTICK_PERIOD_MS);
+        vTaskDelay(200 / portTICK_PERIOD_MS);
     }
 }
 
@@ -171,7 +239,7 @@ void ManualTask(void *parameter){
         else if (myData.y2 <= 50){alleHjul.driveFunction(3);}       //  VENSTRE
         else if (myData.y2 >= 200){alleHjul.driveFunction(4);}      //  HØJRE
         else{alleHjul.driveFunction(0);}                            //  STOP
-        vTaskDelay(300 / portTICK_PERIOD_MS);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 }
 
@@ -179,41 +247,39 @@ void ManualTask(void *parameter){
 //  Self driving mode
 void AutoTask(void *parameter){
     while(myData.interruptBtn == 2){
-        //  Send pulse
-        digitalWrite(trigPin, LOW);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
-        digitalWrite(trigPin, HIGH);
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-        digitalWrite(trigPin, LOW);
 
-        // Read echo
-        duration = pulseInLong(echoPin, HIGH);
-        distance = (duration/2.0) / 29.1;
-/*
-        // Read ToFs
-        rangeMeasure1 = ToFSensor1.rangingTest(&measure1, false);
-        rangeMeasure2 = ToFSensor2.rangingTest(&measure2, false);
-*/
-        if (distance > 25){
-            alleHjul.driveFunction(1);      //  FREMAD
-            Serial.println("No obstacles, moving forward");
+        range.readULSDistances();
+
+        Serial.println(range.distance);
+        Serial.println("");
+
+        range.readToFDistances();
+
+        Serial.print(range.range1MM);
+        Serial.print("\t\t");
+        Serial.print(range.range2MM);
+        Serial.println("");
+        Serial.println("");
+        
+        if (range.distance > 40)
+        {
+            alleHjul.driveFunction(4);
         }
-        else if (distance > 0 && distance <= 25){
-            alleHjul.driveFunction(2);      //  BAGUD
-            Serial.println("Too close, reversing!");
-            delay(50);
-            alleHjul.driveFunction(0);      //  STOP MOTOR
+        else if (range.distance < 40){
+            alleHjul.driveFunction(3);      //  BAGUD
+            vTaskDelay(250 / portTICK_PERIOD_MS);
+            alleHjul.driveFunction(1);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
         }
-        else{
-            alleHjul.driveFunction(0);      //  STOP MOTOR
+        if (range.range1MM < 125)
+        {
+            alleHjul.driveFunction(2);
         }
-        if (rangeMeasure2 < 50 && rangeMeasure1 > 100){
-            alleHjul.driveFunction(3);      // VENSTRE
+        else if (range.range2MM < 125)
+        {
+            alleHjul.driveFunction(1);
         }
-        else if (rangeMeasure1 < 50 && rangeMeasure2 > 100){
-            alleHjul.driveFunction(4);      // HØJRE
-        }
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+        
     }
 }
 
@@ -221,30 +287,26 @@ void AutoTask(void *parameter){
 //  Control the robot arm from the Joysticks
 void RobotTask(void *parameter){
     while(myData.interruptBtn == 3){
-        if (myData.x1 <= 50){structPWM.servoClockwise(2);}
-        if (myData.x1 >= 200){structPWM.servoCounterClockwise(2);}
-        if (myData.y1 <= 50){structPWM.servoClockwise(3);}
-        if (myData.y1 >= 200){structPWM.servoCounterClockwise(3);}
-        if (myData.x2 <= 50){structPWM.servoClockwise(0);}
-        if (myData.x2 >= 200){structPWM.servoCounterClockwise(0);}
-        if (myData.y2 <= 50){structPWM.servoClockwise(1);}
-        if (myData.y2 >= 200){structPWM.servoCounterClockwise(1);}
-        vTaskDelay(400 / portTICK_PERIOD_MS);
+        if (myData.x1 <= 50){structPWM.servoClockwise(0);}
+        if (myData.x1 >= 200){structPWM.servoCounterClockwise(0);}
+        if (myData.y1 <= 50){structPWM.servoClockwise(1);}
+        if (myData.y1 >= 200){structPWM.servoCounterClockwise(1);}
+        if (myData.x2 <= 50){structPWM.servoClockwise(2);}
+        if (myData.x2 >= 200){structPWM.servoCounterClockwise(2);}
+        if (myData.y2 <= 50){structPWM.servoClockwise(3);}
+        if (myData.y2 >= 200){structPWM.servoCounterClockwise(3);}
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
 }
 
 //  Default setup
 void setup(){
     Serial.begin(115200);
-    Serial.println("Starting FreeRTOS Rover");
-    delay(500);
-    
-    Serial.println("PWM Setup\n");
-    pwm.begin();
-    pwm.setPWMFreq(SERVO_FREQ); // Set PWM frequency to 50 Hz
-    delay(500);
+    // wait until serial port opens for native USB devices
+    while (! Serial) { delay(1); }
 
-    Serial.println("Pins Setup\n");
+    Wire.begin();
+
     alleHjul.setupPins();
     /*
     display.setup();
@@ -252,52 +314,41 @@ void setup(){
     */
     pinMode(trigPin, OUTPUT);
     pinMode(echoPin, INPUT);
-    /*pinMode(xShut_Pin, OUTPUT);
-    
-    Wire.begin();
-    digitalWrite(xShut_Pin, LOW);
-    delay(100);
-    digitalWrite(xShut_Pin, HIGH);
-    delay(200);
-    ToFSensor1.begin();
-    ToFSensor1.setAddress(0x2A);
-    delay(100);
-    pinMode(xShut_Pin, INPUT);
-    delay(500);
-    */
 
-    Serial.println("Creating Tasks\n");
+    pinMode(xShut_Pin1, OUTPUT);
+    pinMode(xShut_Pin2, OUTPUT);
+    
+    digitalWrite(xShut_Pin1, LOW);
+    digitalWrite(xShut_Pin2, LOW);
+    delay(1000);
+    
+    range.setID();
+
+    pwm.begin();
+    pwm.setPWMFreq(SERVO_FREQ); // Set PWM frequency to 50 Hz
+    delay(50);
 
     // Create tasks
-    Serial.println("Task 1\n");
     xTaskCreatePinnedToCore(AutoTask, "AutoTask", 10000, NULL, 7, &AutoTaskHandle, 0);
     vTaskSuspend(AutoTaskHandle);
-    Serial.println("Task 2\n");
     xTaskCreatePinnedToCore(ManualTask, "ManualTask", 10000, NULL, 6, &ManualTaskHandle, 0);
     vTaskSuspend(ManualTaskHandle);
-    Serial.println("Task 3\n");
     xTaskCreatePinnedToCore(RobotTask, "RobotTask", 10000, NULL, 5, &RobotTaskHandle, 0);
     vTaskSuspend(RobotTaskHandle);
     xTaskCreatePinnedToCore(btnTask, "ButtonTask", 4096, NULL, 1, &ButtonTaskHandle, 1);
-    delay(500);
+    delay(50);
 
-    Serial.println("WiFi Setup\n");
     // Set device as a Wi-Fi Station
     WiFi.mode(WIFI_STA);
     esp_now_init();
     if (esp_now_init() != ESP_OK) {
-        Serial.println("Error initializing ESP-NOW");
         return;
     }
-    delay(500);
+    delay(50);
     esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
-
-    Serial.println("Setup done!\n\n");
 }
 
 //  Default loop
 void loop(){
-    Serial.println(myData.interruptBtn);
-    delay(50);
     //  display.OLEDWrite(batteryMeasure.readBatteryLevel());
 }
