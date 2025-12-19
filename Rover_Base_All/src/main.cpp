@@ -54,9 +54,9 @@ VL53L0X_RangingMeasurementData_t measure1;
 VL53L0X_RangingMeasurementData_t measure2;
 
 // Define the servo parameters
-#define SERVO_OPENING_DEADZONE 297    // Deadzone start (312)
+#define SERVO_OPENING_DEADZONE 280    // Deadzone start (312)
 #define SERVOSTOP 350                 // Complete deadzone
-#define SERVO_CLOSING_DEADZONE 435    // Deadzone start (410)
+#define SERVO_CLOSING_DEADZONE 440    // Deadzone start (410)
 #define SERVO_FREQ 50                 // Analog servos run at ~50 Hz
 
 //  Define different tasks handlers
@@ -92,12 +92,12 @@ struct Hbro{
         {
             digitalWrite(motorPins[i], driveModes[driveMode][i]);
         }
-        vTaskDelay(75 / portTICK_PERIOD_MS);
+        vTaskDelay(70 / portTICK_PERIOD_MS);
         for (size_t i = 0; i < 4; i++)
         {
             digitalWrite(motorPins[i], driveModes[0][i]);
         }
-        vTaskDelay(25 / portTICK_PERIOD_MS);
+        vTaskDelay(30 / portTICK_PERIOD_MS);
     }
 };
 Hbro alleHjul;
@@ -188,16 +188,20 @@ struct RangeSensors{
 RangeSensors range;
 
 struct PWMBoard{
-    void servoClockwise(int chan){
-        pwm.setPWM(chan, 0, SERVO_CLOSING_DEADZONE);
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-        pwm.setPWM(chan, 0, SERVOSTOP);
+    void servoClockwise(int chan, int speed, int data){
+        pwm.setPWM(chan, 0, SERVO_CLOSING_DEADZONE - data);
+        vTaskDelay(speed / portTICK_PERIOD_MS);
+        servoStop(chan);
     }
-    void servoCounterClockwise(int chan){
-        pwm.setPWM(chan, 0, SERVO_OPENING_DEADZONE);
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-        pwm.setPWM(chan, 0, SERVOSTOP);
+    void servoCounterClockwise(int chan, int speed, int data){
+        pwm.setPWM(chan, 0, SERVO_OPENING_DEADZONE - data);
+        vTaskDelay(speed / portTICK_PERIOD_MS);
+        servoStop(chan);
     }
+    void servoStop(int chan){
+        pwm.setPWM(chan, 0, SERVOSTOP);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    };
 };
 PWMBoard structPWM;
 
@@ -234,10 +238,11 @@ void ManualTask(void *parameter){
     // Task is activated, and the rover is now controlled manually
     // Manual motor control goes here!!!
     while(myData.interruptBtn == 1){
-        if (myData.x2 >= 200){alleHjul.driveFunction(1);}           //  FREMAD
-        else if (myData.x2 <= 50){alleHjul.driveFunction(2);}       //  BAGUD
-        else if (myData.y2 <= 50){alleHjul.driveFunction(3);}       //  VENSTRE
-        else if (myData.y2 >= 200){alleHjul.driveFunction(4);}      //  HØJRE
+        if (myData.x2 <= -75){alleHjul.driveFunction(1);}            //  FREMAD
+        else if (myData.x2 >= 75){alleHjul.driveFunction(2);}      //  BAGUD
+        else if (myData.y2 <= -75){alleHjul.driveFunction(3);}       //  HØJRE
+        else if (myData.y2 >= 75){alleHjul.driveFunction(4);}      //  VENSTRE
+
         else{alleHjul.driveFunction(0);}                            //  STOP
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
@@ -249,35 +254,26 @@ void AutoTask(void *parameter){
     while(myData.interruptBtn == 2){
 
         range.readULSDistances();
-
-        Serial.println(range.distance);
-        Serial.println("");
-
         range.readToFDistances();
 
-        Serial.print(range.range1MM);
-        Serial.print("\t\t");
-        Serial.print(range.range2MM);
-        Serial.println("");
-        Serial.println("");
-        
-        if (range.distance > 40)
+        if (range.distance > 100)
         {
             alleHjul.driveFunction(4);
         }
-        else if (range.distance < 40){
+        else if (range.distance < 100){
             alleHjul.driveFunction(3);      //  BAGUD
-            vTaskDelay(250 / portTICK_PERIOD_MS);
+            alleHjul.driveFunction(3);      //  BAGUD
             alleHjul.driveFunction(1);
-            vTaskDelay(100 / portTICK_PERIOD_MS);
         }
-        if (range.range1MM < 125)
+        if (range.range1MM < 175)
         {
             alleHjul.driveFunction(2);
+            alleHjul.driveFunction(4);
         }
-        else if (range.range2MM < 125)
+        else if (range.range2MM < 175)
         {
             alleHjul.driveFunction(1);
+            alleHjul.driveFunction(4);
         }
         
     }
@@ -287,14 +283,14 @@ void AutoTask(void *parameter){
 //  Control the robot arm from the Joysticks
 void RobotTask(void *parameter){
     while(myData.interruptBtn == 3){
-        if (myData.x1 <= 50){structPWM.servoClockwise(0);}
-        if (myData.x1 >= 200){structPWM.servoCounterClockwise(0);}
-        if (myData.y1 <= 50){structPWM.servoClockwise(1);}
-        if (myData.y1 >= 200){structPWM.servoCounterClockwise(1);}
-        if (myData.x2 <= 50){structPWM.servoClockwise(2);}
-        if (myData.x2 >= 200){structPWM.servoCounterClockwise(2);}
-        if (myData.y2 <= 50){structPWM.servoClockwise(3);}
-        if (myData.y2 >= 200){structPWM.servoCounterClockwise(3);}
+        if (myData.x1 <= -75){structPWM.servoClockwise(0, 40, myData.x1);}
+        if (myData.x1 >= 75){structPWM.servoCounterClockwise(0, 40, myData.x1);}
+        if (myData.y1 <= -75){structPWM.servoClockwise(1, 50, myData.y1);}
+        if (myData.y1 >= 75){structPWM.servoCounterClockwise(1, 50, myData.y1);}
+        if (myData.x2 <= -75){structPWM.servoClockwise(2, 50, myData.x2);}
+        if (myData.x2 >= 75){structPWM.servoCounterClockwise(2, 50, myData.x2);}
+        if (myData.y2 <= -75){structPWM.servoClockwise(3, 50, myData.y2);}
+        if (myData.y2 >= 75){structPWM.servoCounterClockwise(3, 50, myData.y2);}
         vTaskDelay(50 / portTICK_PERIOD_MS);
     }
 }

@@ -12,9 +12,9 @@
 #define JOYSTICK2_X_PIN 34
 #define JOYSTICK2_Y_PIN 35
 
-#define BTN_CHANGE_1_PIN 25
-#define BTN_CHANGE_2_PIN 26
-#define BTN_CHANGE_3_PIN 27
+#define BTN_CHANGE_1_PIN 19
+#define BTN_CHANGE_2_PIN 18
+#define BTN_CHANGE_3_PIN 17
 
 // Define Analog Joystick correction data
 #define ANALOG_X_CORRECTION 128
@@ -58,11 +58,11 @@ void changeMode3()
 void dataChange(void *parameter){
     for(;;){
         //  Move joystick inputs to myData connection
-        myData.x1 = map(analogRead(JOYSTICK1_X_PIN), 0, 4096, 0, 256);
-        myData.y1 = map(analogRead(JOYSTICK1_Y_PIN), 0, 4096, 0, 256);
+        myData.x1 = map(analogRead(JOYSTICK1_X_PIN), 0, 4096, 0, 256) - ANALOG_X_CORRECTION;
+        myData.y1 = map(analogRead(JOYSTICK1_Y_PIN), 0, 4096, 0, 256) - ANALOG_Y_CORRECTION;
         myData.btn1 = digitalRead(JOYSTICK1_BTN_PIN) == 0;
-        myData.x2 = map(analogRead(JOYSTICK2_X_PIN), 0, 4096, 0, 256);
-        myData.y2 = map(analogRead(JOYSTICK2_Y_PIN), 0, 4096, 0, 256);
+        myData.x2 = map(analogRead(JOYSTICK2_X_PIN), 0, 4096, 0, 256) - ANALOG_X_CORRECTION;
+        myData.y2 = map(analogRead(JOYSTICK2_Y_PIN), 0, 4096, 0, 256) - ANALOG_Y_CORRECTION;
         myData.btn2 = digitalRead(JOYSTICK2_BTN_PIN) == 0;
         
         //  Send the data to the other ESP-32
