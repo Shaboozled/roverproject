@@ -13,15 +13,15 @@
        BATTERY POWER --     3.3V                    GND     -- BATTERY GROUND
                             EN                      23      -- X-SHUT TOF1
          BATTERY PIN --     VP                      22      -- SCK
-                            VN                      TX      -- X-SHUT TOF2
+                            VN                      TX
                             34                      RX
-                            35                      21      -- SDA
-            ULS ECHO --     32                      GND
-         ULS TRIGGER --     33                      19      -- MOTOR C1
-            MOTOR A2 --     25                      18      -- MOTOR C2
+           ULS2 ECHO --     35                      21      -- SDA
+           ULS1 ECHO --     32                      GND
+        ULS1 TRIGGER --     33                      19      -- MOTOR A1
+        ULS2 TRIGGER --     25                      18      -- MOTOR A2
                             26                      5       
-            MOTOR B1 --     27                      17      -- MOTOR D2
-            MOTOR B2 --     14                      16      -- MOTOR D1
+                            27                      17      -- MOTOR B2
+                            14                      16      -- MOTOR B1
                             12                      4
                             GND                     0
                             13                      2       
@@ -43,6 +43,12 @@
 #define motorA2 19
 #define motorB1 16
 #define motorB2 17
+
+#define DRIVE_FORWARD 3
+#define DRIVE_BACKWARD 4
+#define DRIVE_LEFT 2
+#define DRIVE_RIGHT 1
+#define DRIVE_STOP 0
 
 //  Class constructers
 Adafruit_PWMServoDriver pwm;
@@ -140,31 +146,22 @@ struct RangeSensors{
         digitalWrite(xShut_Pin1, LOW);    
         digitalWrite(xShut_Pin2, LOW);
         delay(10);
-        // all unreset
-        digitalWrite(xShut_Pin1, HIGH);
-        digitalWrite(xShut_Pin2, HIGH);
-        delay(10);
 
         // activating LOX1 and resetting LOX2
         digitalWrite(xShut_Pin1, HIGH);
         digitalWrite(xShut_Pin2, LOW);
 
         // initing LOX1
-        if(!ToFSensor1.begin(0x2A)) {
-            Serial.println(F("Failed to boot first VL53L0X"));
-            while(1);
-        }
-        delay(10);
+        while(!ToFSensor1.begin(0x30)){}
+        delay(50);
 
         // activating LOX2
         digitalWrite(xShut_Pin2, HIGH);
         delay(10);
 
         //initing LOX2
-        if(!ToFSensor2.begin(0x2B)) {
-            Serial.println(F("Failed to boot second VL53L0X"));
-            while(1);
-        }
+        while (!ToFSensor2.begin(0x31)){}
+        
     }
     void readULSDistances(){
         //  Send pulse
@@ -237,13 +234,14 @@ void btnTask(void *paramter){
 void ManualTask(void *parameter){
     // Task is activated, and the rover is now controlled manually
     // Manual motor control goes here!!!
-    while(myData.interruptBtn == 1){
-        if (myData.x2 <= -75){alleHjul.driveFunction(1);}            //  FREMAD
-        else if (myData.x2 >= 75){alleHjul.driveFunction(2);}      //  BAGUD
-        else if (myData.y2 <= -75){alleHjul.driveFunction(3);}       //  HØJRE
-        else if (myData.y2 >= 75){alleHjul.driveFunction(4);}      //  VENSTRE
+    Serial.println("Manual Task");
 
-        else{alleHjul.driveFunction(0);}                            //  STOP
+    while(myData.interruptBtn == 1){
+        if (myData.x2 <= -75){alleHjul.driveFunction(DRIVE_FORWARD);}        //  FREMAD
+        else if (myData.x2 >= 75){alleHjul.driveFunction(DRIVE_BACKWARD);}   //  BAGUD
+        else if (myData.y2 <= -75){alleHjul.driveFunction(DRIVE_LEFT);}     //  HØJRE
+        else if (myData.y2 >= 75){alleHjul.driveFunction(DRIVE_RIGHT);}       //  VENSTRE
+        else{alleHjul.driveFunction(DRIVE_STOP);}                            //  STOP
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 }
@@ -258,22 +256,24 @@ void AutoTask(void *parameter){
 
         if (range.distance > 100)
         {
-            alleHjul.driveFunction(4);
+            if (range.range1MM < 175)
+            {
+                alleHjul.driveFunction(DRIVE_RIGHT);
+                alleHjul.driveFunction(DRIVE_FORWARD);
+            }
+            else if (range.range2MM < 175)
+            {
+                alleHjul.driveFunction(DRIVE_LEFT);
+                alleHjul.driveFunction(DRIVE_FORWARD);
+            }
+            else {
+                alleHjul.driveFunction(DRIVE_FORWARD);
+            }
         }
         else if (range.distance < 100){
-            alleHjul.driveFunction(3);      //  BAGUD
-            alleHjul.driveFunction(3);      //  BAGUD
-            alleHjul.driveFunction(1);
-        }
-        if (range.range1MM < 175)
-        {
-            alleHjul.driveFunction(2);
-            alleHjul.driveFunction(4);
-        }
-        else if (range.range2MM < 175)
-        {
-            alleHjul.driveFunction(1);
-            alleHjul.driveFunction(4);
+            alleHjul.driveFunction(DRIVE_BACKWARD);      //  BAGUD
+            alleHjul.driveFunction(DRIVE_BACKWARD);      //  BAGUD
+            alleHjul.driveFunction(DRIVE_STOP);
         }
         
     }
@@ -304,20 +304,13 @@ void setup(){
     Wire.begin();
 
     alleHjul.setupPins();
-    /*
-    display.setup();
-    batteri.SetupBattery();
-    */
+    
     pinMode(trigPin, OUTPUT);
     pinMode(echoPin, INPUT);
 
     pinMode(xShut_Pin1, OUTPUT);
     pinMode(xShut_Pin2, OUTPUT);
-    
-    digitalWrite(xShut_Pin1, LOW);
-    digitalWrite(xShut_Pin2, LOW);
-    delay(1000);
-    
+
     range.setID();
 
     pwm.begin();
@@ -346,5 +339,4 @@ void setup(){
 
 //  Default loop
 void loop(){
-    //  display.OLEDWrite(batteryMeasure.readBatteryLevel());
 }
