@@ -10,6 +10,10 @@
             "includePath": [
                 "/home/lasse/Repositories/roverproject/include",
                 "/home/lasse/Repositories/roverproject/src",
+                "/home/lasse/Repositories/roverproject/.pio/libdeps/esp32dev/U8g2_ch1116/src",
+                "/home/lasse/Repositories/roverproject/.pio/libdeps/esp32dev/U8g2/src",
+                "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
+                "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/newlib/platform_include",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/include",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/include/esp_additions/freertos",
@@ -228,7 +232,6 @@
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/RainMaker/src",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SD/src",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SD_MMC/src",
-                "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SimpleBLE/src",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
@@ -238,7 +241,6 @@
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                 "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
-                "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 ""
             ],
             "browse": {
@@ -246,6 +248,10 @@
                 "path": [
                     "/home/lasse/Repositories/roverproject/include",
                     "/home/lasse/Repositories/roverproject/src",
+                    "/home/lasse/Repositories/roverproject/.pio/libdeps/esp32dev/U8g2_ch1116/src",
+                    "/home/lasse/Repositories/roverproject/.pio/libdeps/esp32dev/U8g2/src",
+                    "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
+                    "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/newlib/platform_include",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/include",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/freertos/include/esp_additions/freertos",
@@ -464,7 +470,6 @@
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/RainMaker/src",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SD/src",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SD_MMC/src",
-                    "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/SimpleBLE/src",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/Ticker/src",
@@ -474,7 +479,6 @@
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                     "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
-                    "/home/lasse/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     ""
                 ]
             },
