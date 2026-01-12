@@ -43,6 +43,8 @@
 #define motorB1 16
 #define motorB2 17
 
+#define BUZZER 5
+
 // DRIVE States
 #define DRIVE_FORWARD 2
 #define DRIVE_BACKWARD 1
@@ -74,6 +76,9 @@ long ULS_Duration_LEFT = 0, ULS_Distance_LEFT = 0;
 long ULS_Duration_FRONT = 0, ULS_Distance_FRONT = 0;
 long ULS_Duration_RIGHT = 0, ULS_Distance_RIGHT = 0;
 
+static TickType_t buzzerOffTime = 0;
+static bool buzzerActive = false;
+
 int motorPins[4] = {motorA1, motorA2, motorB1, motorB2};//  Motor definition
                                                         //  DRIVE MODES
 int driveModes[5][4] = {{LOW,   LOW,    LOW,    LOW},   //  STOP
@@ -100,12 +105,6 @@ struct Hbro{
         {
             digitalWrite(motorPins[i], driveModes[driveMode][i]);
         }
-        vTaskDelay(60 / portTICK_PERIOD_MS);
-        for (size_t i = 0; i < 4; i++)
-        {
-            digitalWrite(motorPins[i], driveModes[0][i]);
-        }
-        vTaskDelay(40 / portTICK_PERIOD_MS);
     }
 };
 Hbro alleHjul;
@@ -143,6 +142,14 @@ struct PWMBoard{
     };
 };
 PWMBoard structPWM;
+
+void updateBuzzer(){
+    if (buzzerActive && xTaskGetTickCount() > buzzerOffTime)
+    {
+        digitalWrite(BUZZER, LOW);
+        buzzerActive = false;
+    }
+}
 
 //  Task creations
 //  btnTask controls what mode we are currently in
@@ -188,12 +195,29 @@ void btnTask(void *paramter){
 void ManualTask(void *parameter){
     while(myData.interruptBtn == 1){
         //  Checks the different positions from the joysticks and translates them to movement
-        if (myData.x2 <= -75){alleHjul.driveFunction(DRIVE_RIGHT);}
-        else if (myData.x2 >= 75){alleHjul.driveFunction(DRIVE_LEFT);}
-        else if (myData.y2 <= -75){alleHjul.driveFunction(DRIVE_BACKWARD);}
-        else if (myData.y2 >= 75){alleHjul.driveFunction(DRIVE_FORWARD);}
-        else{alleHjul.driveFunction(DRIVE_STOP);}
-        vTaskDelay(30 / portTICK_PERIOD_MS);
+        if (myData.x2 <= -75){
+            alleHjul.driveFunction(DRIVE_RIGHT);
+        }
+        else if (myData.x2 >= 75){
+            alleHjul.driveFunction(DRIVE_LEFT);
+        }
+        else if (myData.y2 <= -75){
+            alleHjul.driveFunction(DRIVE_BACKWARD);
+            if (!buzzerActive)
+            {
+                digitalWrite(BUZZER, HIGH);
+                buzzerOffTime = xTaskGetTickCount() + pdMS_TO_TICKS(200);
+                buzzerActive = true;
+            }
+        }
+        else if (myData.y2 >= 75){
+            alleHjul.driveFunction(DRIVE_FORWARD);
+        }
+        else{
+            alleHjul.driveFunction(DRIVE_STOP);
+        }
+        updateBuzzer();
+        vTaskDelay(20 / portTICK_PERIOD_MS);
     }
 }
 
@@ -219,32 +243,30 @@ void AutoTask(void *parameter){
         ULS_Duration_FRONT = pulseInLong(ULS_ECHO_FRONT_PIN, HIGH);
         ULS_Distance_FRONT = (ULS_Duration_FRONT/2.0) / 29.1;
 
-        Serial.print("Distance: "); Serial.println(ULS_Distance_FRONT);
-
-        if (ULS_Distance_FRONT <= 25){
-            alleHjul.driveFunction(DRIVE_BACKWARD);
-            vTaskDelay(200 / portTICK_PERIOD_MS);
-            alleHjul.driveFunction(DRIVE_RIGHT);
-        }
-        else if (ULS_Distance_LEFT < 15 || ULS_Distance_RIGHT > 55)
-        {
-            alleHjul.driveFunction(DRIVE_RIGHT);
-            vTaskDelay(200 / portTICK_PERIOD_MS);
-            alleHjul.driveFunction(DRIVE_FORWARD);
-        }
-        else if (ULS_Distance_RIGHT < 15 || ULS_Distance_LEFT > 55)
-        {
-            alleHjul.driveFunction(DRIVE_LEFT);
-            vTaskDelay(200 / portTICK_PERIOD_MS);
+        if (ULS_Distance_FRONT > 30){
+            if (ULS_Distance_LEFT > 55){
+                alleHjul.driveFunction(DRIVE_LEFT);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                alleHjul.driveFunction(DRIVE_STOP);
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+            }
+            else if (ULS_Distance_RIGHT > 55){
+                alleHjul.driveFunction(DRIVE_RIGHT);
+                vTaskDelay(50 / portTICK_PERIOD_MS);
+                alleHjul.driveFunction(DRIVE_STOP);
+                vTaskDelay(100 / portTICK_PERIOD_MS);
+            }
             alleHjul.driveFunction(DRIVE_FORWARD);
         }
         else {
-            alleHjul.driveFunction(DRIVE_FORWARD);
+            alleHjul.driveFunction(DRIVE_BACKWARD);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            alleHjul.driveFunction(DRIVE_STOP);
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            alleHjul.driveFunction(DRIVE_RIGHT);
+            vTaskDelay(50 / portTICK_PERIOD_MS);
         }
-
-        vTaskDelay(30 / portTICK_PERIOD_MS);
-        
-
+        vTaskDelay(75 / portTICK_PERIOD_MS);
     }
 }
 
@@ -252,14 +274,26 @@ void AutoTask(void *parameter){
 //  Control the robot arm from the Joysticks
 void RobotTask(void *parameter){
     while(myData.interruptBtn == 3){
-        if (myData.x1 <= -75){structPWM.servoClockwise(0, 20, myData.x1);}
-        if (myData.x1 >= 75){structPWM.servoCounterClockwise(0, 20, myData.x1);}
-        if (myData.y1 <= -75){structPWM.servoClockwise(1, 50, myData.y1);}
-        if (myData.y1 >= 75){structPWM.servoCounterClockwise(1, 50, myData.y1);}
-        if (myData.x2 <= -75){structPWM.servoClockwise(2, 50, myData.x2);}
-        if (myData.x2 >= 75){structPWM.servoCounterClockwise(2, 50, myData.x2);}
-        if (myData.y2 <= -75){structPWM.servoClockwise(3, 50, myData.y2);}
-        if (myData.y2 >= 75){structPWM.servoCounterClockwise(3, 50, myData.y2);}
+        if (myData.x1 <= -75){
+            structPWM.servoClockwise(0, 20, myData.x1);
+        }
+        if (myData.x1 >= 75){
+            structPWM.servoCounterClockwise(0, 20, myData.x1);
+        }
+        if (myData.y1 <= -75){
+            structPWM.servoClockwise(1, 50, myData.y1);
+        }
+        if (myData.y1 >= 75){
+            structPWM.servoCounterClockwise(1, 50, myData.y1);
+        }
+        if (myData.x2 <= -75){
+            structPWM.servoClockwise(2, 50, myData.x2);
+            structPWM.servoClockwise(3, 50, myData.y2);
+        }
+        if (myData.x2 >= 75){
+            structPWM.servoCounterClockwise(2, 50, myData.x2);
+            structPWM.servoCounterClockwise(3, 50, myData.y2);
+        }
     }
     vTaskDelay(30 / portTICK_PERIOD_MS);
 }
@@ -267,15 +301,12 @@ void RobotTask(void *parameter){
 void SpinningTask(void *parameter){
     while(myData.interruptBtn == 4){
         alleHjul.driveFunction(DRIVE_RIGHT);
-        vTaskDelay(150 / portTICK_PERIOD_MS);
+        vTaskDelay(75 / portTICK_PERIOD_MS);
     }
 }
+
 //  Default setup
 void setup(){
-    Serial.begin(115200);
-    // wait until serial port opens for native USB devices
-    while (! Serial) { delay(1); }
-
     Wire.begin();
 
     alleHjul.setupPins();
@@ -285,14 +316,16 @@ void setup(){
     pwm.setPWMFreq(SERVO_FREQ); // Set PWM frequency to 50 Hz
     delay(50);
 
+    pinMode(BUZZER, OUTPUT);
+
     // Create tasks
-    xTaskCreatePinnedToCore(AutoTask, "AutoTask", 10000, NULL, 7, &AutoTaskHandle, 0);
+    xTaskCreatePinnedToCore(AutoTask, "AutoTask", 6000, NULL, 7, &AutoTaskHandle, 0);
     vTaskSuspend(AutoTaskHandle);
-    xTaskCreatePinnedToCore(ManualTask, "ManualTask", 10000, NULL, 6, &ManualTaskHandle, 0);
+    xTaskCreatePinnedToCore(ManualTask, "ManualTask", 6000, NULL, 6, &ManualTaskHandle, 0);
     vTaskSuspend(ManualTaskHandle);
-    xTaskCreatePinnedToCore(RobotTask, "RobotTask", 10000, NULL, 5, &RobotTaskHandle, 0);
+    xTaskCreatePinnedToCore(RobotTask, "RobotTask", 6000, NULL, 5, &RobotTaskHandle, 0);
     vTaskSuspend(RobotTaskHandle);
-    xTaskCreatePinnedToCore(SpinningTask, "AutoSpin", 10000, NULL, 8, &SpinningTaskHandle, 0);
+    xTaskCreatePinnedToCore(SpinningTask, "AutoSpin", 6000, NULL, 8, &SpinningTaskHandle, 0);
     vTaskSuspend(SpinningTaskHandle);
     xTaskCreatePinnedToCore(btnTask, "ButtonTask", 4096, NULL, 1, &ButtonTaskHandle, 1);
     delay(50);
