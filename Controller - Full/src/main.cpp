@@ -15,6 +15,7 @@
 #define BTN_CHANGE_1_PIN 19
 #define BTN_CHANGE_2_PIN 18
 #define BTN_CHANGE_3_PIN 17
+#define BTN_CHANGE_4_PIN 16
 
 // Define Analog Joystick correction data
 #define ANALOG_X_CORRECTION 128
@@ -54,6 +55,15 @@ void changeMode3()
     }
     BTN_ChangeMode_Last = BTN_ChangeMode_Time;
 }
+void changeMode4()
+{
+    BTN_ChangeMode_Time = millis();
+    if (BTN_ChangeMode_Time - BTN_ChangeMode_Last > 500)
+    {
+        myData.interruptBtn = 4;
+    }
+    BTN_ChangeMode_Last = BTN_ChangeMode_Time;
+}
 
 void dataChange(void *parameter){
     for(;;){
@@ -79,9 +89,11 @@ void setup() {
     pinMode(BTN_CHANGE_1_PIN, INPUT_PULLUP);
     pinMode(BTN_CHANGE_2_PIN, INPUT_PULLUP);
     pinMode(BTN_CHANGE_3_PIN, INPUT_PULLUP);
+    pinMode(BTN_CHANGE_4_PIN, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(BTN_CHANGE_1_PIN), changeMode1, FALLING);
     attachInterrupt(digitalPinToInterrupt(BTN_CHANGE_2_PIN), changeMode2, FALLING);
     attachInterrupt(digitalPinToInterrupt(BTN_CHANGE_3_PIN), changeMode3, FALLING);
+    attachInterrupt(digitalPinToInterrupt(BTN_CHANGE_4_PIN), changeMode4, FALLING);
 
     WiFi.mode(WIFI_STA);
     esp_now_init();

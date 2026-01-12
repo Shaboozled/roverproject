@@ -4,24 +4,22 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
-#include <Adafruit_VL53L0X.h>
-#include <U8g2lib.h>
 
 #include "Struct_WiFi.h"
 
 /*                          ___________________________
        BATTERY POWER --     3.3V                    GND     -- BATTERY GROUND
-                            EN                      23      -- X-SHUT TOF1
-         BATTERY PIN --     VP                      22      -- SCK
-                            VN                      TX
-                            34                      RX
-           ULS2 ECHO --     35                      21      -- SDA
-           ULS1 ECHO --     32                      GND
-        ULS1 TRIGGER --     33                      19      -- MOTOR A1
-        ULS2 TRIGGER --     25                      18      -- MOTOR A2
-                            26                      5       
-                            27                      17      -- MOTOR B2
-                            14                      16      -- MOTOR B1
+                            EN                      23
+                            VP                      22      -- SCK
+       ULS_ECHO_LEFT --     39                      TX
+      ULS_ECHO_RIGHT --     34                      RX
+      ULS_ECHO_FRONT --     35                      21      -- SDA
+    ULS_TRIGGER_LEFT --     32                      GND
+   ULS_TRIGGER_RIGHT --     33                      19      -- MOTOR A-1A
+   ULS_TRIGGER_FRONT --     25                      18      -- MOTOR A-1B
+                            26                      5       -- BUZZER
+                            27                      17      -- MOTOR B-1B
+                            14                      16      -- MOTOR B-1A
                             12                      4
                             GND                     0
                             13                      2       
@@ -33,31 +31,27 @@
 */
 
 //  PIN configurations
-#define trigPin 33
-#define echoPin 32
-#define xShut_Pin1 25
-#define xShut_Pin2 5
-#define batteryLevelPin 36
+#define ULS_ECHO_LEFT_PIN 39
+#define ULS_ECHO_FRONT_PIN 35
+#define ULS_ECHO_RIGHT_PIN 34
+#define ULS_TRIGGER_LEFT_PIN 32
+#define ULS_TRIGGER_FRONT_PIN 25
+#define ULS_TRIGGER_RIGHT_PIN 33
 
 #define motorA1 18
 #define motorA2 19
 #define motorB1 16
 #define motorB2 17
 
-#define DRIVE_FORWARD 3
-#define DRIVE_BACKWARD 4
-#define DRIVE_LEFT 2
-#define DRIVE_RIGHT 1
+// DRIVE States
+#define DRIVE_FORWARD 2
+#define DRIVE_BACKWARD 1
+#define DRIVE_RIGHT 3
+#define DRIVE_LEFT 4
 #define DRIVE_STOP 0
 
 //  Class constructers
 Adafruit_PWMServoDriver pwm;
-U8G2_SH1106_128X32_VISIONOX_F_HW_I2C Display1(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
-Adafruit_VL53L0X ToFSensor1 = Adafruit_VL53L0X();
-Adafruit_VL53L0X ToFSensor2 = Adafruit_VL53L0X();
-
-VL53L0X_RangingMeasurementData_t measure1;
-VL53L0X_RangingMeasurementData_t measure2;
 
 // Define the servo parameters
 #define SERVO_OPENING_DEADZONE 280    // Deadzone start (312)
@@ -70,134 +64,82 @@ TaskHandle_t ButtonTaskHandle = NULL;
 TaskHandle_t ManualTaskHandle = NULL;
 TaskHandle_t AutoTaskHandle = NULL;
 TaskHandle_t RobotTaskHandle = NULL;
+TaskHandle_t SpinningTaskHandle = NULL;
 
 //  Used variables
 int btnSettings = 0,  BTN_Mode = 0, pulseleng;
 long BTN_ChangeMode_Time = 0, BTN_ChangeMode_Last = 0;
 
-char oledInput[11];
+long ULS_Duration_LEFT = 0, ULS_Distance_LEFT = 0;
+long ULS_Duration_FRONT = 0, ULS_Distance_FRONT = 0;
+long ULS_Duration_RIGHT = 0, ULS_Distance_RIGHT = 0;
+
 int motorPins[4] = {motorA1, motorA2, motorB1, motorB2};//  Motor definition
                                                         //  DRIVE MODES
 int driveModes[5][4] = {{LOW,   LOW,    LOW,    LOW},   //  STOP
-                        {HIGH,  LOW,    HIGH,   LOW},   //  FREMAD
-                        {LOW,   HIGH,   LOW,    HIGH},  //  BAGUD
-                        {HIGH,  LOW,    LOW,    HIGH},  //  VENSTRE
-                        {LOW,   HIGH,   HIGH,   LOW},   //  HØJRE
+                        {LOW,   HIGH,   LOW,    HIGH},  //  BACKWARDS
+                        {HIGH,  LOW,    HIGH,   LOW},   //  FORWARDS
+                        {HIGH,  LOW,    LOW,    HIGH},  //  RIGHT
+                        {LOW,   HIGH,   HIGH,   LOW},   //  LEFT
 };
 
 //  Creating the different structs with a Variable creator at the end
+//  HBRO - Wheel controls
 struct Hbro{
+    //  PIN Setups
     void setupPins(){
         for (size_t i = 0; i < 4; i++)
         {
             pinMode(motorPins[i], OUTPUT);
         }
     }
+    //  DRIVE function with a stopper at the end
+    //  Goes through the different DRIVE MODES with a function variable
     void driveFunction(int driveMode){
         for (size_t i = 0; i < 4; i++)
         {
             digitalWrite(motorPins[i], driveModes[driveMode][i]);
         }
-        vTaskDelay(70 / portTICK_PERIOD_MS);
+        vTaskDelay(60 / portTICK_PERIOD_MS);
         for (size_t i = 0; i < 4; i++)
         {
             digitalWrite(motorPins[i], driveModes[0][i]);
         }
-        vTaskDelay(30 / portTICK_PERIOD_MS);
+        vTaskDelay(40 / portTICK_PERIOD_MS);
     }
 };
 Hbro alleHjul;
 
-struct OLED{
-    void setup(){
-        Display1.begin();
-    }
-    void OLEDWrite(char* Text){
-        Display1.clearBuffer();                 // clear the internal memory
-        Display1.setFont(u8g2_font_4x6_mf);     // choose a suitable font
-        Display1.drawStr(2,5, Text);            // write something to the internal memory
-        Display1.sendBuffer();                  // transfer internal memory to the display
-        delay(1000);
-    }
-};
-OLED display;
-
-struct Battery{
-  void SetupBattery(){
-      pinMode(batteryLevelPin, INPUT);
-  }
-  char* readBatteryLevel(){
-      int analogInput = analogRead(batteryLevelPin);
-      float rawVolts = analogInput * 3.3/4096;
-
-      dtostrf(rawVolts, 10, 8, oledInput);
-
-      return oledInput;
-  }
-};
-Battery batteri;
-
+//  Range Sensor (ULS) setup only
 struct RangeSensors{
-    int rangeMeasure1 = 0, rangeMeasure2 = 0;
-    long duration = 0, distance = 0, range1MM = 0, range2MM = 0;
-
-    void setID() {
-        // all reset
-        digitalWrite(xShut_Pin1, LOW);    
-        digitalWrite(xShut_Pin2, LOW);
-        delay(10);
-
-        // activating LOX1 and resetting LOX2
-        digitalWrite(xShut_Pin1, HIGH);
-        digitalWrite(xShut_Pin2, LOW);
-
-        // initing LOX1
-        while(!ToFSensor1.begin(0x30)){}
-        delay(50);
-
-        // activating LOX2
-        digitalWrite(xShut_Pin2, HIGH);
-        delay(10);
-
-        //initing LOX2
-        while (!ToFSensor2.begin(0x31)){}
-        
-    }
-    void readULSDistances(){
-        //  Send pulse
-        digitalWrite(trigPin, HIGH);
-        vTaskDelay(5 / portTICK_PERIOD_MS);
-        digitalWrite(trigPin, LOW);
-
-        // Read echo
-        duration = pulseInLong(echoPin, HIGH);
-        distance = (duration/2.0) / 29.1;
-    }
-    void readToFDistances(){
-        // Read ToFs
-        ToFSensor1.rangingTest(&measure1, false);
-        ToFSensor2.rangingTest(&measure2, false);
-
-        range1MM = measure1.RangeMilliMeter;
-        range2MM = measure2.RangeMilliMeter;
+    void ULSSetup(){
+        pinMode(ULS_TRIGGER_LEFT_PIN, OUTPUT);
+        pinMode(ULS_TRIGGER_RIGHT_PIN, OUTPUT);
+        pinMode(ULS_TRIGGER_FRONT_PIN, OUTPUT);
+        pinMode(ULS_ECHO_LEFT_PIN, INPUT);
+        pinMode(ULS_ECHO_FRONT_PIN, INPUT);
+        pinMode(ULS_ECHO_RIGHT_PIN, INPUT);
     }
 };
 RangeSensors range;
 
+//  PWM Board for Servo motor control
 struct PWMBoard{
+    //  Controls the clockwise motion of the servo
     void servoClockwise(int chan, int speed, int data){
         pwm.setPWM(chan, 0, SERVO_CLOSING_DEADZONE - data);
         vTaskDelay(speed / portTICK_PERIOD_MS);
         servoStop(chan);
     }
+    //  Controls the counter clockwise motion of the servo
     void servoCounterClockwise(int chan, int speed, int data){
         pwm.setPWM(chan, 0, SERVO_OPENING_DEADZONE - data);
         vTaskDelay(speed / portTICK_PERIOD_MS);
         servoStop(chan);
     }
+    //  Stopper to control the servos better
     void servoStop(int chan){
         pwm.setPWM(chan, 0, SERVOSTOP);
-        vTaskDelay(10 / portTICK_PERIOD_MS);
     };
 };
 PWMBoard structPWM;
@@ -208,22 +150,34 @@ PWMBoard structPWM;
 //  1   -   Manual controls over the rover
 //  2   -   Auto driving, with range measuring
 //  3   -   Robot Arm, with manual controls
+//
+//  Disables the tasks that is not being used, and enables only the one needed task
 void btnTask(void *paramter){
     for(;;){
         while(myData.interruptBtn == 1){
             vTaskSuspend(AutoTaskHandle);
             vTaskSuspend(RobotTaskHandle);
+            vTaskSuspend(SpinningTaskHandle);
             vTaskResume(ManualTaskHandle);
         }
         while(myData.interruptBtn == 2){
             vTaskSuspend(ManualTaskHandle);
             vTaskSuspend(RobotTaskHandle);
+            vTaskSuspend(SpinningTaskHandle);
             vTaskResume(AutoTaskHandle);
         }
         while(myData.interruptBtn == 3){
             vTaskSuspend(AutoTaskHandle);
             vTaskSuspend(ManualTaskHandle);
+            vTaskSuspend(SpinningTaskHandle);
             vTaskResume(RobotTaskHandle);
+        }
+        while(myData.interruptBtn == 4){
+            vTaskSuspend(AutoTaskHandle);
+            vTaskSuspend(ManualTaskHandle);
+            vTaskSuspend(RobotTaskHandle);
+            vTaskResume(SpinningTaskHandle);
+
         }
         vTaskDelay(200 / portTICK_PERIOD_MS);
     }
@@ -232,17 +186,14 @@ void btnTask(void *paramter){
 //  Manual task
 //  Controls the rover from the Joysticks
 void ManualTask(void *parameter){
-    // Task is activated, and the rover is now controlled manually
-    // Manual motor control goes here!!!
-    Serial.println("Manual Task");
-
     while(myData.interruptBtn == 1){
-        if (myData.x2 <= -75){alleHjul.driveFunction(DRIVE_FORWARD);}        //  FREMAD
-        else if (myData.x2 >= 75){alleHjul.driveFunction(DRIVE_BACKWARD);}   //  BAGUD
-        else if (myData.y2 <= -75){alleHjul.driveFunction(DRIVE_LEFT);}     //  HØJRE
-        else if (myData.y2 >= 75){alleHjul.driveFunction(DRIVE_RIGHT);}       //  VENSTRE
-        else{alleHjul.driveFunction(DRIVE_STOP);}                            //  STOP
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        //  Checks the different positions from the joysticks and translates them to movement
+        if (myData.x2 <= -75){alleHjul.driveFunction(DRIVE_RIGHT);}
+        else if (myData.x2 >= 75){alleHjul.driveFunction(DRIVE_LEFT);}
+        else if (myData.y2 <= -75){alleHjul.driveFunction(DRIVE_BACKWARD);}
+        else if (myData.y2 >= 75){alleHjul.driveFunction(DRIVE_FORWARD);}
+        else{alleHjul.driveFunction(DRIVE_STOP);}
+        vTaskDelay(30 / portTICK_PERIOD_MS);
     }
 }
 
@@ -250,32 +201,50 @@ void ManualTask(void *parameter){
 //  Self driving mode
 void AutoTask(void *parameter){
     while(myData.interruptBtn == 2){
+        digitalWrite(ULS_TRIGGER_LEFT_PIN, HIGH);
+        vTaskDelay(5 / portTICK_PERIOD_MS);
+        digitalWrite(ULS_TRIGGER_LEFT_PIN, LOW);
+        ULS_Duration_LEFT = pulseInLong(ULS_ECHO_LEFT_PIN, HIGH);
+        ULS_Distance_LEFT = (ULS_Duration_LEFT/2.0) / 29.1;
+        vTaskDelay(5 / portTICK_PERIOD_MS);
+        digitalWrite(ULS_TRIGGER_RIGHT_PIN, HIGH);
+        vTaskDelay(5 / portTICK_PERIOD_MS);
+        digitalWrite(ULS_TRIGGER_RIGHT_PIN, LOW);
+        ULS_Duration_RIGHT = pulseInLong(ULS_ECHO_RIGHT_PIN, HIGH);
+        ULS_Distance_RIGHT = (ULS_Duration_RIGHT/2.0) / 29.1;
+        vTaskDelay(5 / portTICK_PERIOD_MS);
+        digitalWrite(ULS_TRIGGER_FRONT_PIN, HIGH);
+        vTaskDelay(5 / portTICK_PERIOD_MS);
+        digitalWrite(ULS_TRIGGER_FRONT_PIN, LOW);
+        ULS_Duration_FRONT = pulseInLong(ULS_ECHO_FRONT_PIN, HIGH);
+        ULS_Distance_FRONT = (ULS_Duration_FRONT/2.0) / 29.1;
 
-        range.readULSDistances();
-        range.readToFDistances();
+        Serial.print("Distance: "); Serial.println(ULS_Distance_FRONT);
 
-        if (range.distance > 100)
+        if (ULS_Distance_FRONT <= 25){
+            alleHjul.driveFunction(DRIVE_BACKWARD);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+            alleHjul.driveFunction(DRIVE_RIGHT);
+        }
+        else if (ULS_Distance_LEFT < 15 || ULS_Distance_RIGHT > 55)
         {
-            if (range.range1MM < 175)
-            {
-                alleHjul.driveFunction(DRIVE_RIGHT);
-                alleHjul.driveFunction(DRIVE_FORWARD);
-            }
-            else if (range.range2MM < 175)
-            {
-                alleHjul.driveFunction(DRIVE_LEFT);
-                alleHjul.driveFunction(DRIVE_FORWARD);
-            }
-            else {
-                alleHjul.driveFunction(DRIVE_FORWARD);
-            }
+            alleHjul.driveFunction(DRIVE_RIGHT);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+            alleHjul.driveFunction(DRIVE_FORWARD);
         }
-        else if (range.distance < 100){
-            alleHjul.driveFunction(DRIVE_BACKWARD);      //  BAGUD
-            alleHjul.driveFunction(DRIVE_BACKWARD);      //  BAGUD
-            alleHjul.driveFunction(DRIVE_STOP);
+        else if (ULS_Distance_RIGHT < 15 || ULS_Distance_LEFT > 55)
+        {
+            alleHjul.driveFunction(DRIVE_LEFT);
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+            alleHjul.driveFunction(DRIVE_FORWARD);
         }
+        else {
+            alleHjul.driveFunction(DRIVE_FORWARD);
+        }
+
+        vTaskDelay(30 / portTICK_PERIOD_MS);
         
+
     }
 }
 
@@ -283,18 +252,24 @@ void AutoTask(void *parameter){
 //  Control the robot arm from the Joysticks
 void RobotTask(void *parameter){
     while(myData.interruptBtn == 3){
-        if (myData.x1 <= -75){structPWM.servoClockwise(0, 40, myData.x1);}
-        if (myData.x1 >= 75){structPWM.servoCounterClockwise(0, 40, myData.x1);}
+        if (myData.x1 <= -75){structPWM.servoClockwise(0, 20, myData.x1);}
+        if (myData.x1 >= 75){structPWM.servoCounterClockwise(0, 20, myData.x1);}
         if (myData.y1 <= -75){structPWM.servoClockwise(1, 50, myData.y1);}
         if (myData.y1 >= 75){structPWM.servoCounterClockwise(1, 50, myData.y1);}
         if (myData.x2 <= -75){structPWM.servoClockwise(2, 50, myData.x2);}
         if (myData.x2 >= 75){structPWM.servoCounterClockwise(2, 50, myData.x2);}
         if (myData.y2 <= -75){structPWM.servoClockwise(3, 50, myData.y2);}
         if (myData.y2 >= 75){structPWM.servoCounterClockwise(3, 50, myData.y2);}
-        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
+    vTaskDelay(30 / portTICK_PERIOD_MS);
 }
 
+void SpinningTask(void *parameter){
+    while(myData.interruptBtn == 4){
+        alleHjul.driveFunction(DRIVE_RIGHT);
+        vTaskDelay(150 / portTICK_PERIOD_MS);
+    }
+}
 //  Default setup
 void setup(){
     Serial.begin(115200);
@@ -304,14 +279,7 @@ void setup(){
     Wire.begin();
 
     alleHjul.setupPins();
-    
-    pinMode(trigPin, OUTPUT);
-    pinMode(echoPin, INPUT);
-
-    pinMode(xShut_Pin1, OUTPUT);
-    pinMode(xShut_Pin2, OUTPUT);
-
-    range.setID();
+    range.ULSSetup();
 
     pwm.begin();
     pwm.setPWMFreq(SERVO_FREQ); // Set PWM frequency to 50 Hz
@@ -324,6 +292,8 @@ void setup(){
     vTaskSuspend(ManualTaskHandle);
     xTaskCreatePinnedToCore(RobotTask, "RobotTask", 10000, NULL, 5, &RobotTaskHandle, 0);
     vTaskSuspend(RobotTaskHandle);
+    xTaskCreatePinnedToCore(SpinningTask, "AutoSpin", 10000, NULL, 8, &SpinningTaskHandle, 0);
+    vTaskSuspend(SpinningTaskHandle);
     xTaskCreatePinnedToCore(btnTask, "ButtonTask", 4096, NULL, 1, &ButtonTaskHandle, 1);
     delay(50);
 
