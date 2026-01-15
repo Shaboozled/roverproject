@@ -83,6 +83,8 @@ void dataChange(void *parameter){
 }
 
 void setup() {
+    Serial.begin(115200);
+
     pinMode(JOYSTICK1_BTN_PIN, INPUT_PULLUP);
     pinMode(JOYSTICK2_BTN_PIN, INPUT_PULLUP);
     

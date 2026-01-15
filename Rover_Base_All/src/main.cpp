@@ -30,7 +30,7 @@
         
 */
 
-//  PIN configurations
+//  GPIO PIN configurations
 #define ULS_ECHO_LEFT_PIN 39
 #define ULS_ECHO_FRONT_PIN 35
 #define ULS_ECHO_RIGHT_PIN 34
@@ -72,9 +72,9 @@ TaskHandle_t SpinningTaskHandle = NULL;
 int btnSettings = 0,  BTN_Mode = 0, pulseleng;
 long BTN_ChangeMode_Time = 0, BTN_ChangeMode_Last = 0;
 
-long ULS_Duration_LEFT = 0, ULS_Distance_LEFT = 0;
+long ULS_Duration_LEFT = 0, ULS_Distance_LEFT = 0, ULS_Distance_LEFT_LAST = 0;
+long ULS_Duration_RIGHT = 0, ULS_Distance_RIGHT = 0, ULS_Distance_RIGHT_LAST = 0;
 long ULS_Duration_FRONT = 0, ULS_Distance_FRONT = 0;
-long ULS_Duration_RIGHT = 0, ULS_Distance_RIGHT = 0;
 
 static TickType_t buzzerOffTime = 0;
 static bool buzzerActive = false;
@@ -89,6 +89,7 @@ int driveModes[5][4] = {{LOW,   LOW,    LOW,    LOW},   //  STOP
 };
 
 //  Creating the different structs with a Variable creator at the end
+
 //  HBRO - Wheel controls
 struct Hbro{
     //  PIN Setups
@@ -143,6 +144,7 @@ struct PWMBoard{
 };
 PWMBoard structPWM;
 
+//  Buzzer control and timer
 void updateBuzzer(){
     if (buzzerActive && xTaskGetTickCount() > buzzerOffTime)
     {
@@ -151,13 +153,15 @@ void updateBuzzer(){
     }
 }
 
-//  Task creations
+/*  Task creations
 //  btnTask controls what mode we are currently in
 //  0   -   Default, does nothing
 //  1   -   Manual controls over the rover
 //  2   -   Auto driving, with range measuring
 //  3   -   Robot Arm, with manual controls
-//
+*/
+
+//  Buttons on controller
 //  Disables the tasks that is not being used, and enables only the one needed task
 void btnTask(void *paramter){
     for(;;){
@@ -225,48 +229,66 @@ void ManualTask(void *parameter){
 //  Self driving mode
 void AutoTask(void *parameter){
     while(myData.interruptBtn == 2){
+        //  ULS Triggers and Echoes
+        //  Does one at the time
+
+        //  ULS Left
         digitalWrite(ULS_TRIGGER_LEFT_PIN, HIGH);
         vTaskDelay(5 / portTICK_PERIOD_MS);
         digitalWrite(ULS_TRIGGER_LEFT_PIN, LOW);
         ULS_Duration_LEFT = pulseInLong(ULS_ECHO_LEFT_PIN, HIGH);
         ULS_Distance_LEFT = (ULS_Duration_LEFT/2.0) / 29.1;
         vTaskDelay(5 / portTICK_PERIOD_MS);
+
+        //  ULS Right
         digitalWrite(ULS_TRIGGER_RIGHT_PIN, HIGH);
         vTaskDelay(5 / portTICK_PERIOD_MS);
         digitalWrite(ULS_TRIGGER_RIGHT_PIN, LOW);
         ULS_Duration_RIGHT = pulseInLong(ULS_ECHO_RIGHT_PIN, HIGH);
         ULS_Distance_RIGHT = (ULS_Duration_RIGHT/2.0) / 29.1;
         vTaskDelay(5 / portTICK_PERIOD_MS);
+
+        //  ULS Front
         digitalWrite(ULS_TRIGGER_FRONT_PIN, HIGH);
         vTaskDelay(5 / portTICK_PERIOD_MS);
         digitalWrite(ULS_TRIGGER_FRONT_PIN, LOW);
         ULS_Duration_FRONT = pulseInLong(ULS_ECHO_FRONT_PIN, HIGH);
         ULS_Distance_FRONT = (ULS_Duration_FRONT/2.0) / 29.1;
 
+        //  Check if it is clear ahead of the rover
         if (ULS_Distance_FRONT > 30){
-            if (ULS_Distance_LEFT > 55){
+            //  Check left side if it is too far away
+            if (ULS_Distance_RIGHT < 30 && ULS_Distance_RIGHT < ULS_Distance_RIGHT_LAST){
                 alleHjul.driveFunction(DRIVE_LEFT);
                 vTaskDelay(50 / portTICK_PERIOD_MS);
-                alleHjul.driveFunction(DRIVE_STOP);
-                vTaskDelay(100 / portTICK_PERIOD_MS);
             }
-            else if (ULS_Distance_RIGHT > 55){
+            //  Check right side if it is too far away
+            else if (ULS_Distance_LEFT < 30 && ULS_Distance_LEFT < ULS_Distance_LEFT_LAST){
                 alleHjul.driveFunction(DRIVE_RIGHT);
                 vTaskDelay(50 / portTICK_PERIOD_MS);
-                alleHjul.driveFunction(DRIVE_STOP);
-                vTaskDelay(100 / portTICK_PERIOD_MS);
             }
+            //  Always drive a little bit forward before new readings
             alleHjul.driveFunction(DRIVE_FORWARD);
         }
+        //  If the front is not clear, drive backwards once and turn away before new readings.
         else {
             alleHjul.driveFunction(DRIVE_BACKWARD);
             vTaskDelay(100 / portTICK_PERIOD_MS);
-            alleHjul.driveFunction(DRIVE_STOP);
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-            alleHjul.driveFunction(DRIVE_RIGHT);
-            vTaskDelay(50 / portTICK_PERIOD_MS);
+            //  If the right side is closer than the left, turn left once
+            if (ULS_Distance_RIGHT < ULS_Distance_LEFT){
+                alleHjul.driveFunction(DRIVE_LEFT);
+            }
+            //  Else if the left side is closer, turn right once
+            else{
+                alleHjul.driveFunction(DRIVE_RIGHT);
+            }
         }
         vTaskDelay(75 / portTICK_PERIOD_MS);
+        alleHjul.driveFunction(DRIVE_STOP);
+        vTaskDelay(25 / portTICK_PERIOD_MS);
+
+        ULS_Distance_LEFT_LAST = ULS_Distance_LEFT;
+        ULS_Distance_RIGHT_LAST = ULS_Distance_RIGHT;
     }
 }
 
@@ -274,30 +296,34 @@ void AutoTask(void *parameter){
 //  Control the robot arm from the Joysticks
 void RobotTask(void *parameter){
     while(myData.interruptBtn == 3){
+        //  Base
         if (myData.x1 <= -75){
-            structPWM.servoClockwise(0, 20, myData.x1);
+            structPWM.servoCounterClockwise(0, 40, myData.x1);
         }
         if (myData.x1 >= 75){
-            structPWM.servoCounterClockwise(0, 20, myData.x1);
+            structPWM.servoClockwise(0, 40, myData.x1);
         }
+        //  Claw
         if (myData.y1 <= -75){
-            structPWM.servoClockwise(1, 50, myData.y1);
-        }
-        if (myData.y1 >= 75){
             structPWM.servoCounterClockwise(1, 50, myData.y1);
         }
-        if (myData.x2 <= -75){
-            structPWM.servoClockwise(2, 50, myData.x2);
-            structPWM.servoClockwise(3, 50, myData.y2);
+        if (myData.y1 >= 75){
+            structPWM.servoClockwise(1, 50, myData.y1);
         }
-        if (myData.x2 >= 75){
-            structPWM.servoCounterClockwise(2, 50, myData.x2);
+        //  Up and down
+        if (myData.y2 <= -75){
+            structPWM.servoClockwise(2, 50, myData.y2);
             structPWM.servoCounterClockwise(3, 50, myData.y2);
+        }
+        if (myData.y2 >= 75){
+            structPWM.servoCounterClockwise(2, 50, myData.y2);
+            structPWM.servoClockwise(3, 50, myData.y2);
         }
     }
     vTaskDelay(30 / portTICK_PERIOD_MS);
 }
 
+//  Static right spin for testing
 void SpinningTask(void *parameter){
     while(myData.interruptBtn == 4){
         alleHjul.driveFunction(DRIVE_RIGHT);
@@ -307,16 +333,16 @@ void SpinningTask(void *parameter){
 
 //  Default setup
 void setup(){
+    //  Wire setup with pin configurations
     Wire.begin();
-
     alleHjul.setupPins();
     range.ULSSetup();
+    pinMode(BUZZER, OUTPUT);
 
+    //  PWM beginning and setup frequency
     pwm.begin();
     pwm.setPWMFreq(SERVO_FREQ); // Set PWM frequency to 50 Hz
     delay(50);
-
-    pinMode(BUZZER, OUTPUT);
 
     // Create tasks
     xTaskCreatePinnedToCore(AutoTask, "AutoTask", 6000, NULL, 7, &AutoTaskHandle, 0);
@@ -337,9 +363,13 @@ void setup(){
         return;
     }
     delay(50);
+
+    //  Callback function to receive the transmission
     esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
 }
 
 //  Default loop
+//  !! LEAVE EMPTY !!
+//  Everything is controlled by FreeRTOS Tasks
 void loop(){
 }
